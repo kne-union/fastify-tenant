@@ -38,7 +38,6 @@ module.exports = ({ DataTypes, options }) => {
     associate: ({ user: tenantUser, tenant, org }) => {
       tenantUser.belongsTo(options.getUserModel());
       tenantUser.belongsTo(tenant, {
-        foreignKey: 'tenantId',
         allowNull: false
       });
       tenantUser.belongsTo(org, {

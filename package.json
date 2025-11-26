@@ -1,6 +1,6 @@
 {
   "name": "@kne/fastify-tenant",
-  "version": "1.0.0-alpha.0",
+  "version": "1.0.0-alpha.1",
   "description": "用于实现一个租户系统",
   "main": "index.js",
   "scripts": {
@@ -41,7 +41,7 @@
     "@kne/fastify-account": "^2.0.4",
     "@kne/fastify-namespace": "^1.1.2",
     "@kne/fastify-response-data-format": "^1.0.0",
-    "@kne/fastify-sequelize": "^3.2.0",
+    "@kne/fastify-sequelize": "^4.0.0",
     "fastify": "^5.4.0",
     "fastify-plugin": "^5.0.1",
     "husky": "^9.0.11",

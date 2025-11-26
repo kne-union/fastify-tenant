@@ -20,7 +20,6 @@ module.exports = ({ DataTypes, definePrimaryType, options }) => {
     },
     associate: ({ org, tenant }) => {
       org.belongsTo(tenant, {
-        foreignKey: 'tenantId',
         allowNull: false
       });
     },
