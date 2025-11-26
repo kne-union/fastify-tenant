@@ -14,7 +14,6 @@ module.exports = ({ DataTypes, options }) => {
     },
     associate: ({ setting, tenant }) => {
       setting.belongsTo(tenant, {
-        foreignKey: 'tenantId',
         allowNull: false
       });
     },

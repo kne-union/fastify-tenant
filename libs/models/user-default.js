@@ -6,7 +6,6 @@ module.exports = ({ DataTypes, options }) => {
         allowNull: false
       });
       tenantUserDefault.belongsTo(tenant, {
-        foreignKey: 'tenantId',
         allowNull: false
       });
     },

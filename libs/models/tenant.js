@@ -45,12 +45,8 @@ module.exports = ({ DataTypes, options }) => {
       }
     },
     associate: ({ company, setting, tenant }) => {
-      tenant.hasOne(company, {
-        foreignKey: 'tenantId'
-      });
-      tenant.hasOne(setting, {
-        foreignKey: 'tenantId'
-      });
+      tenant.hasOne(company);
+      tenant.hasOne(setting);
     },
     options: {
       comment: '租户',
