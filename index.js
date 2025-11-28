@@ -1,5 +1,8 @@
 const fp = require('fastify-plugin');
 const path = require('node:path');
+const yml = require('js-yaml');
+const fs = require('node:fs/promises');
+const merge = require('lodash/merge');
 
 module.exports = fp(
   async (fastify, options) => {
@@ -28,7 +31,8 @@ module.exports = fp(
             throw new Error('请先安装fastify-account插件或者实现options.getAdminUserAuthenticate');
           }
           return fastify.account.authenticate.admin;
-        }
+        },
+        permissionsProfile: path.resolve(__dirname, './libs/permissions.js')
       },
       options
     );
@@ -55,6 +59,33 @@ module.exports = fp(
               request[options.tenantUserContextName] = await services.user.getTenantUserInfo(request.userInfo);
             }
           }
+        ],
+        [
+          'permissions',
+          merge(
+            {},
+            require('./libs/permissions'),
+            await (async () => {
+              if (!(options.permissionsProfile && (await fs.exists(options.permissionsProfile)))) {
+                return {};
+              }
+              try {
+                const permissionsProfile = await fs.readFile(options.permissionsProfile, 'utf8');
+                if (path.extname(options.permissionsProfile) === '.yml') {
+                  return yml.load(permissionsProfile);
+                }
+                if (path.extname(options.permissionsProfile) === '.json') {
+                  return JSON.parse(permissionsProfile);
+                }
+                if (path.extname(options.permissionsProfile) === '.js') {
+                  return require(options.permissionsProfile);
+                }
+              } catch (e) {
+                console.error(e);
+                return {};
+              }
+            })()
+          )
         ]
       ]
     });
