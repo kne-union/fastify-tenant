@@ -5,7 +5,7 @@ module.exports = fp(async (fastify, options) => {
   const { models, services } = fastify[options.name];
   const { Op } = fastify.sequelize.Sequelize;
   const create = async ({ name, description, logo, themeColor, accountCount, supportLanguage, defaultLanguage, serviceStartTime, serviceEndTime }) => {
-    return await models.tenant.create({
+    const tenant = await models.tenant.create({
       name,
       description,
       logo,
@@ -16,6 +16,31 @@ module.exports = fp(async (fastify, options) => {
       serviceStartTime,
       serviceEndTime
     });
+
+    await services.company.save({
+      tenantId: tenant.id,
+      name: tenant.name
+    });
+
+    await services.role.create({
+      tenantId: tenant.id,
+      name: '租户管理员',
+      code: 'admin',
+      description: '拥有租户所有权限',
+      type: 'system'
+    });
+
+    await services.role.create({
+      tenantId: tenant.id,
+      name: '默认角色',
+      code: 'default',
+      description: '拥有用户都拥有的角色',
+      type: 'system'
+    });
+
+    await services.permission.initTenantPermissions({ tenantId: tenant.id });
+
+    return tenant;
   };
 
   const save = async ({ id, ...data }) => {

@@ -16,7 +16,11 @@ module.exports = ({ DataTypes, definePrimaryType, options }) => {
       },
       parentId: definePrimaryType('parentId', {
         comment: '父级ID'
-      })
+      }),
+      options: {
+        type: DataTypes.JSONB,
+        comment: '扩展字段'
+      }
     },
     associate: ({ org, tenant }) => {
       org.belongsTo(tenant, {

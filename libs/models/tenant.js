@@ -42,6 +42,10 @@ module.exports = ({ DataTypes, options }) => {
       serviceEndTime: {
         type: DataTypes.DATE,
         comment: '服务结束时间'
+      },
+      options: {
+        type: DataTypes.JSONB,
+        comment: '扩展字段'
       }
     },
     associate: ({ company, setting, tenant }) => {

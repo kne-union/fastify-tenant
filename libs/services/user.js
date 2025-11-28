@@ -253,7 +253,6 @@ module.exports = fp(async (fastify, options) => {
     if (!tenantUser) {
       throw new Forbidden('不能进行此操作');
     }
-    console.log(tenantUser);
     if (tenantUser.tenant?.status !== 'open') {
       throw new Error('租户不能使用');
     }

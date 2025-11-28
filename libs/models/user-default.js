@@ -1,6 +1,11 @@
 module.exports = ({ DataTypes, options }) => {
   return {
-    model: {},
+    model: {
+      options: {
+        type: DataTypes.JSONB,
+        comment: '扩展字段'
+      }
+    },
     associate: ({ userDefault: tenantUserDefault, tenant }) => {
       tenantUserDefault.belongsTo(options.getUserModel(), {
         allowNull: false

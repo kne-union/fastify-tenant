@@ -40,9 +40,7 @@ module.exports = ({ DataTypes, options }) => {
       tenantUser.belongsTo(tenant, {
         allowNull: false
       });
-      tenantUser.belongsTo(org, {
-        foreignKey: 'orgId'
-      });
+      tenantUser.belongsTo(org);
     },
     options: {
       comment: '租户用户',
