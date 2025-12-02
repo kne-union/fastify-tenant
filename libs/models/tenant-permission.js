@@ -25,7 +25,6 @@ module.exports = ({ DataTypes, options }) => {
       comment: '租户权限设置',
       indexes: [
         {
-          name: 'tenant_permission_code_key',
           fields: ['tenant_id', 'code'],
           unique: true,
           where: {

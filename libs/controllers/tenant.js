@@ -472,27 +472,4 @@ module.exports = fp(async (fastify, options) => {
       return {};
     }
   );
-
-  fastify.get(
-    `${options.prefix}/statistics`,
-    {
-      onRequest: [userAuthenticate, authenticate.tenantUser],
-      schema: {
-        summary: '获取统计数据',
-        query: {
-          type: 'object',
-          properties: {
-            timeRange: {
-              type: 'number',
-              enum: [7, 30],
-              default: 7
-            }
-          }
-        }
-      }
-    },
-    async request => {
-      return await services.statistics.getRecord(Object.assign({}, request.query, { tenantId: request.tenantUserInfo.tenantId }));
-    }
-  );
 });

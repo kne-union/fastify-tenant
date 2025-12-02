@@ -2,7 +2,6 @@ const fp = require('fastify-plugin');
 const path = require('node:path');
 const yml = require('js-yaml');
 const fs = require('node:fs/promises');
-const merge = require('lodash/merge');
 
 module.exports = fp(
   async (fastify, options) => {
@@ -32,7 +31,7 @@ module.exports = fp(
           }
           return fastify.account.authenticate.admin;
         },
-        permissionsProfile: path.resolve(__dirname, './libs/permissions.js')
+        permissionsProfile: path.resolve(process.cwd(), './libs/permissions.js')
       },
       options
     );
@@ -52,6 +51,13 @@ module.exports = fp(
         ],
         ['services', path.resolve(__dirname, './libs/services')],
         [
+          'utils',
+          {
+            mergePermissions: require('./libs/utils/mergePermissions'),
+            flattenPermissions: require('./libs/utils/flattenPermissions')
+          }
+        ],
+        [
           'authenticate',
           {
             tenantUser: async request => {
@@ -62,15 +68,22 @@ module.exports = fp(
         ],
         [
           'permissions',
-          merge(
-            {},
-            require('./libs/permissions'),
-            await (async () => {
-              if (!(options.permissionsProfile && (await fs.exists(options.permissionsProfile)))) {
+          await (async () => {
+            const outside = await (async () => {
+              if (
+                !(
+                  options.permissionsProfile &&
+                  (await fs
+                    .access(options.permissionsProfile)
+                    .then(() => true)
+                    .catch(() => false))
+                )
+              ) {
                 return {};
               }
               try {
                 const permissionsProfile = await fs.readFile(options.permissionsProfile, 'utf8');
+
                 if (path.extname(options.permissionsProfile) === '.yml') {
                   return yml.load(permissionsProfile);
                 }
@@ -84,8 +97,18 @@ module.exports = fp(
                 console.error(e);
                 return {};
               }
-            })()
-          )
+            })();
+            const result = require('./libs/permissions');
+            const mergePermissions = require('./libs/utils/mergePermissions');
+            return mergePermissions(result, outside);
+          })()
+        ],
+        [
+          'appendPermissions',
+          outside => {
+            const { permissions, utils } = fastify[options.name];
+            fastify[options.name].permissions = utils.mergePermissions(permissions, outside);
+          }
         ]
       ]
     });

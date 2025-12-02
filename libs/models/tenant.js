@@ -56,8 +56,11 @@ module.exports = ({ DataTypes, options }) => {
       comment: '租户',
       indexes: [
         {
-          fields: ['name', 'deleted_at'],
-          unique: true
+          fields: ['name'],
+          unique: true,
+          where: {
+            deleted_at: null
+          }
         }
       ]
     }
