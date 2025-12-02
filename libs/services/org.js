@@ -37,7 +37,7 @@ module.exports = fp(async (fastify, options) => {
     if ((await models.org.count({ where: { tenantId, parentId: id } })) > 0) {
       throw new Error('请先删除所有子节点再进行操作');
     }
-    if ((await models.user.count({ where: { tenantId, orgId: id } })) > 0) {
+    if ((await models.user.count({ where: { tenantId, tenantOrgId: id } })) > 0) {
       throw new Error('请先移除当前组织下所有用户再进行操作');
     }
     await org.destroy();
