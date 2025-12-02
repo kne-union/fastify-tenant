@@ -46,14 +46,18 @@ module.exports = ({ DataTypes, options }) => {
       comment: '租户用户',
       indexes: [
         {
-          name: 'tenant_user_key',
-          fields: ['tenant_id', 'user_id', 'deleted_at'],
-          unique: true
+          fields: ['tenant_id', 'user_id'],
+          unique: true,
+          where: {
+            deleted_at: null
+          }
         },
         {
-          name: 'tenant_user_email_key',
-          fields: ['tenant_id', 'email', 'deleted_at'],
-          unique: true
+          fields: ['tenant_id', 'email'],
+          unique: true,
+          where: {
+            deleted_at: null
+          }
         }
       ]
     }

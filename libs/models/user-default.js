@@ -18,9 +18,11 @@ module.exports = ({ DataTypes, options }) => {
       comment: '用户默认租户设置',
       indexes: [
         {
-          name: 'tenant_user_default_key',
-          fields: ['user_id', 'tenant_id', 'deleted_at'],
-          unique: true
+          fields: ['user_id', 'tenant_id'],
+          unique: true,
+          where: {
+            deleted_at: null
+          }
         }
       ]
     }

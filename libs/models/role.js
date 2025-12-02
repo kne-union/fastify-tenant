@@ -40,7 +40,6 @@ module.exports = ({ DataTypes, options }) => {
       comment: '角色',
       indexes: [
         {
-          name: 'tenant_role_code_key',
           fields: ['tenant_id', 'code'],
           unique: true,
           where: {

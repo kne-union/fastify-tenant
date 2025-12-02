@@ -14,7 +14,7 @@ module.exports = ({ DataTypes, options }) => {
         comment: '扩展字段'
       }
     },
-    associate: ({ role, rolePermission, tenant }) => {
+    associate: ({ role, user, rolePermission, tenant }) => {
       rolePermission.belongsTo(tenant, {
         allowNull: false
       });
@@ -29,8 +29,7 @@ module.exports = ({ DataTypes, options }) => {
       comment: '角色权限设置',
       indexes: [
         {
-          name: 'tenant_role_permission_code_key',
-          fields: ['tenant_id', 'role_id', 'code'],
+          fields: ['tenant_id', 'tenant_role_id', 'code'],
           unique: true,
           where: {
             deleted_at: null
