@@ -6,6 +6,11 @@ module.exports = ({ DataTypes, options }) => {
         defaultValue: [],
         comment: '租户环境变量'
       },
+      customComponents: {
+        type: DataTypes.JSON,
+        defaultValue: [],
+        comment: '租户自定义组件'
+      },
       options: {
         type: DataTypes.JSON,
         defaultValue: {},

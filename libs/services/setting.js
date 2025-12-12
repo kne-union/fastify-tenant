@@ -3,8 +3,7 @@ const groupBy = require('lodash/groupBy');
 const transform = require('lodash/transform');
 
 module.exports = fp(async (fastify, options) => {
-  const { models, services } = fastify[options.name];
-  const { transaction } = fastify.sequelize.instance;
+  const { models } = fastify[options.name];
   const appendArgs = async ({ tenantId, args }) => {
     let setting = await detail({ tenantId });
     if (!setting) {
@@ -20,6 +19,100 @@ module.exports = fp(async (fastify, options) => {
     setting.args = [...(setting.args || []), ...args];
 
     await setting.save();
+  };
+
+  const appendCustomComponent = async ({ tenantId, customComponent }) => {
+    let setting = await detail({ tenantId });
+    if (!setting) {
+      setting = await models.setting.create({ tenantId });
+    }
+
+    const customComponentItem = await models.customComponent.create({
+      content: customComponent.content,
+      tenantId
+    });
+
+    if ((setting.customComponents || []).find(item => item.key === customComponent.key)) {
+      throw new Error(`自定义组件${customComponent.key}已存在，请先删除后再添加新的值`);
+    }
+
+    setting.customComponents = [...(setting.customComponents || []), Object.assign({}, customComponent, { content: customComponentItem.id })];
+
+    await setting.save();
+  };
+
+  const copyCustomComponent = async ({ tenantId, key }) => {
+    let setting = await detail({ tenantId });
+    if (!setting) {
+      throw new Error('租户设置不存在');
+    }
+    const customComponentItemIndex = setting.customComponents.findIndex(item => item.key === key);
+    if (customComponentItemIndex === -1) {
+      throw new Error('自定义组件不存在');
+    }
+    const customComponentItem = setting.customComponents[customComponentItemIndex];
+    const customComponentInstance = await models.customComponent.findByPk(customComponentItem.content);
+
+    await appendCustomComponent({
+      tenantId,
+      customComponent: Object.assign({}, customComponentItem, {
+        content: customComponentInstance.content,
+        key: `${customComponentItem.key}_COPY`
+      })
+    });
+  };
+
+  const saveCustomComponents = async ({ tenantId, customComponent }) => {
+    let setting = await detail({ tenantId });
+    if (!setting) {
+      throw new Error('租户设置不存在');
+    }
+    const customComponentItemIndex = setting.customComponents.findIndex(item => item.key === customComponent.key);
+
+    if (customComponentItemIndex === -1) {
+      throw new Error('自定义组件不存在');
+    }
+    const customComponentItem = setting.customComponents[customComponentItemIndex];
+    const customComponentInstance = await models.customComponent.findByPk(customComponentItem.content);
+    customComponentInstance.content = customComponent.content;
+    await customComponentInstance.save();
+    const newCustomComponents = setting.customComponents.slice(0);
+    newCustomComponents.splice(
+      customComponentItemIndex,
+      1,
+      Object.assign({}, customComponentItem, customComponent, {
+        content: customComponentInstance.id
+      })
+    );
+    setting.customComponents = newCustomComponents;
+    await setting.save();
+  };
+
+  const customComponentDetail = async ({ tenantId, key }) => {
+    const setting = await detail({ tenantId });
+    const customComponentItem = (setting?.customComponents || []).find(item => item.key === key);
+    if (!customComponentItem) {
+      throw new Error(`${key}已不存在`);
+    }
+    return await models.customComponent.findByPk(customComponentItem.content);
+  };
+
+  const removeCustomComponent = async ({ tenantId, key }) => {
+    let setting = await detail({ tenantId });
+    const customComponentIndex = (setting?.customComponents || []).findIndex(item => item.key === key);
+    if (customComponentIndex === -1) {
+      throw new Error(`${key}已不存在`);
+    }
+    const customComponentId = setting.customComponents[customComponentIndex].content;
+    const newCustomComponents = setting.customComponents.slice(0);
+    newCustomComponents.splice(customComponentIndex, 1);
+    setting.customComponents = newCustomComponents;
+    await setting.save();
+    await models.customComponent.destroy({
+      where: {
+        id: customComponentId
+      }
+    });
   };
 
   const detail = async ({ tenantId, hasSecret }) => {
@@ -82,6 +175,6 @@ module.exports = fp(async (fastify, options) => {
   };
 
   Object.assign(fastify[options.name].services, {
-    setting: { appendArgs, detail, removeArg }
+    setting: { appendArgs, appendCustomComponent, saveCustomComponents, customComponentDetail, copyCustomComponent, removeCustomComponent, detail, removeArg }
   });
 });
