@@ -1,32 +1,75 @@
 const fp = require('fastify-plugin');
 const groupBy = require('lodash/groupBy');
 const transform = require('lodash/transform');
+const get = require('lodash/get');
 
 module.exports = fp(async (fastify, options) => {
   const { models } = fastify[options.name];
   const appendArgs = async ({ tenantId, args }) => {
     let setting = await detail({ tenantId });
-    if (!setting) {
-      setting = await models.setting.create({ tenantId });
-    }
-
     args.forEach(({ key }) => {
       if ((setting.args || []).find(item => item.key === key)) {
         throw new Error(`环境变量${key}已存在，请先删除后再添加新的值`);
       }
     });
-
-    setting.args = [...(setting.args || []), ...args];
-
+    const { secrets, args: targetArgs } = groupBy(args, item => (item.secret ? 'secrets' : 'args'));
+    await saveSecrets({ secrets, tenantId });
+    setting.args = [...(setting.args || []), ...(targetArgs || []), ...(secrets || []).map(item => Object.assign({}, item, { value: '******' }))];
     await setting.save();
+  };
+
+  const saveSecrets = async ({ secrets, tenantId }) => {
+    if (!(secrets && secrets.length > 0)) {
+      return;
+    }
+    await detail({ tenantId });
+    const setting = await models.setting.findOne({
+      where: {
+        tenantId
+      }
+    });
+    const newSecrets = setting.secrets.slice(0);
+    setting.secrets = newSecrets.concat(secrets);
+    await setting.save();
+  };
+
+  const removeSecret = async ({ tenantId, key }) => {
+    await detail({ tenantId });
+    const setting = await models.setting.findOne({
+      where: {
+        tenantId
+      }
+    });
+    const newSecrets = setting.secrets.slice(0);
+    const secretIndex = newSecrets.findIndex(item => item.key === key);
+    if (secretIndex === -1) {
+      return;
+    }
+    newSecrets.splice(secretIndex, 1);
+    setting.secrets = newSecrets;
+    await setting.save();
+  };
+
+  const getSecrets = async ({ tenantId, key }) => {
+    await detail({ tenantId });
+    const setting = await models.setting.findOne({
+      attributes: ['secrets'],
+      where: {
+        tenantId
+      }
+    });
+    if (!setting) {
+      return null;
+    }
+    return get(
+      (setting.secrets || []).find(item => item.key === key),
+      'value',
+      null
+    );
   };
 
   const appendCustomComponent = async ({ tenantId, customComponent }) => {
     let setting = await detail({ tenantId });
-    if (!setting) {
-      setting = await models.setting.create({ tenantId });
-    }
-
     const customComponentItem = await models.customComponent.create({
       content: customComponent.content,
       tenantId
@@ -42,10 +85,7 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const copyCustomComponent = async ({ tenantId, key }) => {
-    let setting = await detail({ tenantId });
-    if (!setting) {
-      throw new Error('租户设置不存在');
-    }
+    const setting = await detail({ tenantId });
     const customComponentItemIndex = setting.customComponents.findIndex(item => item.key === key);
     if (customComponentItemIndex === -1) {
       throw new Error('自定义组件不存在');
@@ -63,10 +103,7 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const saveCustomComponents = async ({ tenantId, customComponent }) => {
-    let setting = await detail({ tenantId });
-    if (!setting) {
-      throw new Error('租户设置不存在');
-    }
+    const setting = await detail({ tenantId });
     const customComponentItemIndex = setting.customComponents.findIndex(item => item.key === customComponent.key);
 
     if (customComponentItemIndex === -1) {
@@ -115,50 +152,20 @@ module.exports = fp(async (fastify, options) => {
     });
   };
 
-  const detail = async ({ tenantId, hasSecret }) => {
+  const detail = async ({ tenantId }) => {
     const tenant = await models.tenant.findByPk(tenantId);
     if (!tenant) {
       throw new Error('租户不存在');
     }
     const setting = await models.setting.findOne({
+      attributes: ['id', 'args', 'customComponents', 'options'],
       where: {
         tenantId: tenant.id
       }
     });
     if (!setting) {
-      return null;
+      return await models.setting.create({ tenantId });
     }
-    const { secret, args } = groupBy(setting?.args || [], item => (item.secret ? 'secret' : 'args'));
-
-    const output = Object.assign(
-      {},
-      {
-        args: transform(
-          args,
-          (result, value) => {
-            result[value.key] = value.value;
-          },
-          {}
-        ),
-        options: setting?.options || {}
-      },
-      hasSecret
-        ? {
-            secret: transform(
-              secret,
-              (result, value) => {
-                result[value.key] = value.value;
-              },
-              {}
-            )
-          }
-        : {}
-    );
-    setting.setDataValue('output', output);
-    setting.setDataValue(
-      'args',
-      (setting?.args || []).map(item => Object.assign({}, item, item.secret ? { value: '******' } : {}))
-    );
     return setting;
   };
 
@@ -168,6 +175,12 @@ module.exports = fp(async (fastify, options) => {
     if (argIndex === -1) {
       throw new Error(`${key}已不存在`);
     }
+    const arg = setting.args[argIndex];
+
+    if (arg.secret) {
+      await removeSecret({ tenantId, key });
+    }
+
     const newArgs = setting.args.slice(0);
     newArgs.splice(argIndex, 1);
     setting.args = newArgs;
@@ -175,6 +188,16 @@ module.exports = fp(async (fastify, options) => {
   };
 
   Object.assign(fastify[options.name].services, {
-    setting: { appendArgs, appendCustomComponent, saveCustomComponents, customComponentDetail, copyCustomComponent, removeCustomComponent, detail, removeArg }
+    setting: {
+      appendArgs,
+      appendCustomComponent,
+      saveCustomComponents,
+      customComponentDetail,
+      copyCustomComponent,
+      removeCustomComponent,
+      detail,
+      removeArg,
+      getSecrets
+    }
   });
 });

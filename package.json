@@ -1,6 +1,6 @@
 {
   "name": "@kne/fastify-tenant",
-  "version": "1.0.0-alpha.5",
+  "version": "1.0.0-alpha.6",
   "description": "用于实现一个租户系统",
   "main": "index.js",
   "scripts": {
