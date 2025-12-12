@@ -472,4 +472,30 @@ module.exports = fp(async (fastify, options) => {
       return {};
     }
   );
+
+  fastify.get(
+    `${options.prefix}/custom-component-detail`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '自定义组件详情',
+        query: {
+          type: 'object',
+          properties: {
+            key: {
+              type: 'string'
+            }
+          },
+          required: ['key']
+        }
+      }
+    },
+    async request => {
+      return services.setting.customComponentDetail(
+        Object.assign({}, request.query, {
+          tenantId: request.tenantUserInfo.tenantId
+        })
+      );
+    }
+  );
 });

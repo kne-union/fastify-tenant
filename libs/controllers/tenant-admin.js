@@ -126,6 +126,171 @@ module.exports = fp(async (fastify, options) => {
   );
 
   fastify.post(
+    `${options.prefix}/admin/append-custom-component`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '设置租户自定义组件',
+        body: {
+          type: 'object',
+          properties: {
+            tenantId: {
+              type: 'string'
+            },
+            customComponent: {
+              type: 'object',
+              properties: {
+                key: {
+                  type: 'string'
+                },
+                name: {
+                  type: 'string'
+                },
+                description: {
+                  type: 'string'
+                },
+                type: {
+                  type: 'string'
+                },
+                content: {
+                  type: 'string'
+                }
+              },
+              required: ['key', 'name', 'type', 'content']
+            }
+          },
+          required: ['tenantId', 'customComponent']
+        }
+      }
+    },
+    async request => {
+      await services.setting.appendCustomComponent(request.body);
+      return {};
+    }
+  );
+
+  fastify.get(
+    `${options.prefix}/admin/custom-component-detail`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '自定义组件详情',
+        query: {
+          type: 'object',
+          properties: {
+            tenantId: {
+              type: 'string'
+            },
+            key: {
+              type: 'string'
+            }
+          },
+          required: ['tenantId', 'key']
+        }
+      }
+    },
+    async request => {
+      return services.setting.customComponentDetail(request.query);
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/admin/remove-custom-component`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '删除一个自定义组件',
+        body: {
+          type: 'object',
+          properties: {
+            tenantId: {
+              type: 'string'
+            },
+            key: {
+              type: 'string'
+            }
+          },
+          required: ['tenantId', 'key']
+        }
+      }
+    },
+    async request => {
+      await services.setting.removeCustomComponent(request.body);
+      return {};
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/admin/save-custom-component`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '保存一个自定义组件',
+        body: {
+          type: 'object',
+          properties: {
+            tenantId: {
+              type: 'string'
+            },
+            customComponent: {
+              type: 'object',
+              properties: {
+                key: {
+                  type: 'string'
+                },
+                name: {
+                  type: 'string'
+                },
+                description: {
+                  type: 'string'
+                },
+                type: {
+                  type: 'string'
+                },
+                content: {
+                  type: 'string'
+                }
+              },
+              required: ['key', 'name', 'type', 'content']
+            }
+          },
+          required: ['tenantId', 'customComponent']
+        }
+      }
+    },
+    async request => {
+      await services.setting.saveCustomComponents(request.body);
+      return {};
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/admin/copy-custom-component`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '复制一个自定义组件',
+        body: {
+          type: 'object',
+          properties: {
+            tenantId: {
+              type: 'string'
+            },
+            key: {
+              type: 'string'
+            }
+          },
+          required: ['tenantId', 'key']
+        }
+      }
+    },
+    async request => {
+      await services.setting.copyCustomComponent(request.body);
+      return {};
+    }
+  );
+
+  fastify.post(
     `${options.prefix}/admin/create`,
     {
       onRequest: [userAuthenticate, adminAuthenticate],
