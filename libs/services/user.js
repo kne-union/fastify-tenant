@@ -257,6 +257,10 @@ module.exports = fp(async (fastify, options) => {
       throw new Error('租户不能使用');
     }
 
+    const tenantSetting = await services.setting.detail({ tenantId: tenantUser.tenantId });
+    tenantUser.tenant.setDataValue('tenantSetting', tenantSetting);
+    tenantUser.setDataValue('tenantSetting', tenantSetting);
+
     return tenantUser;
   };
 
