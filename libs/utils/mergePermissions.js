@@ -6,8 +6,8 @@ const mergePermissions = (origin, target) => {
     if (!(Array.isArray(modules) && modules.length > 0)) {
       return;
     }
+    let current = get(result, path);
     modules.forEach(module => {
-      let current = get(result, path);
       if (!Array.isArray(current)) {
         current = [];
       }
@@ -16,13 +16,13 @@ const mergePermissions = (origin, target) => {
         current.push(module);
         return;
       }
-
       current[sameCodeItemIndex] = Object.assign({}, current[sameCodeItemIndex], {
         name: module.name,
         permissions: [...(current[sameCodeItemIndex].permissions || []), ...(module.permissions || [])]
       });
       core(module.modules, `${path}.${sameCodeItemIndex}.modules`);
     });
+    result[path] = current.sort((a, b) => (b.index || 0) - (a.index || 0));
   };
   core(target.modules);
   return result;

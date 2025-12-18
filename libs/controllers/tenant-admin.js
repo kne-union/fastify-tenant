@@ -1,6 +1,7 @@
 const fp = require('fastify-plugin');
 const merge = require('lodash/merge');
 const schema = require('../schema/tenant');
+const tenantUserSchema = require('../schema/tenant-user');
 
 module.exports = fp(async (fastify, options) => {
   const { services } = fastify[options.name];
@@ -539,33 +540,7 @@ module.exports = fp(async (fastify, options) => {
       onRequest: [userAuthenticate, adminAuthenticate],
       schema: {
         summary: '创建租户用户',
-        body: {
-          type: 'object',
-          properties: {
-            tenantId: {
-              type: 'string'
-            },
-            name: {
-              type: 'string'
-            },
-            tenantOrgId: {
-              type: 'string'
-            },
-            avatar: {
-              type: 'string'
-            },
-            email: {
-              type: 'string'
-            },
-            phone: {
-              type: 'string'
-            },
-            description: {
-              type: 'string'
-            }
-          },
-          required: ['tenantId', 'name']
-        }
+        body: tenantUserSchema
       }
     },
     async request => {
@@ -580,41 +555,9 @@ module.exports = fp(async (fastify, options) => {
       onRequest: [userAuthenticate, adminAuthenticate],
       schema: {
         summary: '编辑租户用户',
-        body: {
-          type: 'object',
-          properties: {
-            id: {
-              type: 'string'
-            },
-            tenantId: {
-              type: 'string'
-            },
-            name: {
-              type: 'string'
-            },
-            tenantOrgId: {
-              type: 'string',
-              default: ''
-            },
-            avatar: {
-              type: 'string',
-              default: ''
-            },
-            email: {
-              type: 'string',
-              default: ''
-            },
-            phone: {
-              type: 'string',
-              default: ''
-            },
-            description: {
-              type: 'string',
-              default: ''
-            }
-          },
+        body: Object.assign({}, tenantUserSchema, {
           required: ['id', 'tenantId', 'name']
-        }
+        })
       }
     },
     async request => {

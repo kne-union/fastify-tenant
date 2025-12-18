@@ -3,6 +3,7 @@ module.exports = {
     {
       name: '设置',
       code: 'setting',
+      index: -1,
       modules: [
         {
           name: '公司信息',
@@ -109,6 +110,10 @@ module.exports = {
             {
               name: '删除',
               code: 'remove'
+            },
+            {
+              name: '邀请',
+              code: 'invite'
             }
           ]
         }
