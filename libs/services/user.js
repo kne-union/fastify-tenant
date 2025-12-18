@@ -38,8 +38,8 @@ module.exports = fp(async (fastify, options) => {
       phone,
       description,
       tenantId,
-      tenantOrgId,
-      roles: checkedRoles
+      roles: checkedRoles,
+      tenantOrgId
     });
   };
 

@@ -48,7 +48,7 @@ module.exports = fp(async (fastify, options) => {
     return role;
   };
 
-  const save = async ({ tenantId, id, data }) => {
+  const save = async ({ tenantId, id, ...data }) => {
     const tenant = await services.tenant.detail({ id: tenantId });
     const role = await detail({ id, tenantId: tenant.id });
     if (role.type === 'system') {
@@ -93,7 +93,7 @@ module.exports = fp(async (fastify, options) => {
     const role = await detail({ id, tenantId: tenant.id });
     const tenantPermissions = await services.permission.tenantLevelList({ tenantId: tenant.id });
     return {
-      codes: role.permissions,
+      codes: role.permissions.filter(code => tenantPermissions.codes.indexOf(code) !== -1),
       permissions: tenantPermissions.permissions
     };
   };
@@ -118,7 +118,8 @@ module.exports = fp(async (fastify, options) => {
         tenantId: tenant.id
       }
     });
-    if (roles.indexOf('admin') > 1) {
+
+    if (roleList.find(({ type, code }) => type === 'system' && code === 'admin')) {
       return tenantPermissions;
     }
 
@@ -134,7 +135,7 @@ module.exports = fp(async (fastify, options) => {
     }, []);
 
     return {
-      codes,
+      codes: codes.filter(code => tenantPermissions.codes.indexOf(code) !== -1),
       permissions: tenantPermissions.permissions
     };
   };
