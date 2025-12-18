@@ -53,20 +53,26 @@ module.exports = fp(async (fastify, options) => {
   const getSecrets = async ({ tenantId, key }) => {
     await detail({ tenantId });
     const setting = await models.setting.findOne({
-      attributes: ['secrets'], where: {
+      attributes: ['secrets'],
+      where: {
         tenantId
       }
     });
     if (!setting) {
       return null;
     }
-    return get((setting.secrets || []).find(item => item.key === key), 'value', null);
+    return get(
+      (setting.secrets || []).find(item => item.key === key),
+      'value',
+      null
+    );
   };
 
   const appendCustomComponent = async ({ tenantId, customComponent }) => {
     let setting = await detail({ tenantId });
     const customComponentItem = await models.customComponent.create({
-      content: customComponent.content, tenantId
+      content: customComponent.content,
+      tenantId
     });
 
     if ((setting.customComponents || []).find(item => item.key === customComponent.key)) {
@@ -88,8 +94,10 @@ module.exports = fp(async (fastify, options) => {
     const customComponentInstance = await models.customComponent.findByPk(customComponentItem.content);
 
     await appendCustomComponent({
-      tenantId, customComponent: Object.assign({}, customComponentItem, {
-        content: customComponentInstance.content, key: `${customComponentItem.key}_COPY`
+      tenantId,
+      customComponent: Object.assign({}, customComponentItem, {
+        content: customComponentInstance.content,
+        key: `${customComponentItem.key}_COPY`
       })
     });
   };
@@ -106,9 +114,13 @@ module.exports = fp(async (fastify, options) => {
     customComponentInstance.content = customComponent.content;
     await customComponentInstance.save();
     const newCustomComponents = setting.customComponents.slice(0);
-    newCustomComponents.splice(customComponentItemIndex, 1, Object.assign({}, customComponentItem, customComponent, {
-      content: customComponentInstance.id
-    }));
+    newCustomComponents.splice(
+      customComponentItemIndex,
+      1,
+      Object.assign({}, customComponentItem, customComponent, {
+        content: customComponentInstance.id
+      })
+    );
     setting.customComponents = newCustomComponents;
     await setting.save();
   };
@@ -146,16 +158,24 @@ module.exports = fp(async (fastify, options) => {
       throw new Error('租户不存在');
     }
     const setting = await models.setting.findOne({
-      attributes: ['id', 'args', 'customComponents', 'options'], where: {
+      attributes: ['id', 'args', 'customComponents', 'permissions', 'options'],
+      where: {
         tenantId: tenant.id
       }
     });
     if (!setting) {
       return await models.setting.create({ tenantId });
     }
-    setting.setDataValue('argsValue', transform(setting.args, (result, value) => {
-      result[value.key] = value.value;
-    }, {}));
+    setting.setDataValue(
+      'argsValue',
+      transform(
+        setting.args,
+        (result, value) => {
+          result[value.key] = value.value;
+        },
+        {}
+      )
+    );
     return setting;
   };
 
@@ -177,6 +197,12 @@ module.exports = fp(async (fastify, options) => {
     await setting.save();
   };
 
+  const savePermissions = async ({ tenantId, permissions }) => {
+    const setting = await detail({ tenantId });
+    setting.permissions = permissions;
+    await setting.save();
+  };
+
   Object.assign(fastify[options.name].services, {
     setting: {
       appendArgs,
@@ -185,6 +211,7 @@ module.exports = fp(async (fastify, options) => {
       customComponentDetail,
       copyCustomComponent,
       removeCustomComponent,
+      savePermissions,
       detail,
       removeArg,
       getSecrets

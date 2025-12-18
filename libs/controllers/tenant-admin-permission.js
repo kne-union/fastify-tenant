@@ -130,6 +130,64 @@ module.exports = fp(async (fastify, options) => {
   );
 
   fastify.get(
+    `${options.prefix}/admin/role/permission-list`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '租户角色权限列表',
+        query: {
+          type: 'object',
+          properties: {
+            tenantId: {
+              type: 'string'
+            },
+            id: {
+              type: 'string'
+            }
+          },
+          required: ['tenantId', 'id']
+        }
+      }
+    },
+    async request => {
+      return await services.role.permissionList(request.query);
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/admin/role/save-permission`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '保存租户角色权限',
+        body: {
+          type: 'object',
+          properties: {
+            tenantId: {
+              type: 'string'
+            },
+            id: {
+              type: 'string'
+            },
+            permissions: {
+              type: 'array',
+              items: {
+                type: 'string'
+              },
+              default: []
+            }
+          },
+          required: ['tenantId', 'id', 'permissions']
+        }
+      }
+    },
+    async request => {
+      await services.role.savePermission(request.body);
+      return {};
+    }
+  );
+
+  fastify.get(
     `${options.prefix}/admin/permission/list`,
     {
       onRequest: [userAuthenticate, adminAuthenticate],
@@ -148,6 +206,36 @@ module.exports = fp(async (fastify, options) => {
     },
     async request => {
       return await services.permission.list(request.query);
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/admin/permission/save`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '保存租户权限',
+        body: {
+          type: 'object',
+          properties: {
+            tenantId: {
+              type: 'string'
+            },
+            permissions: {
+              type: 'array',
+              items: {
+                type: 'string'
+              },
+              default: []
+            }
+          },
+          required: ['tenantId', 'permissions']
+        }
+      }
+    },
+    async request => {
+      await services.permission.save(request.body);
+      return {};
     }
   );
 });

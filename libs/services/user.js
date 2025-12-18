@@ -5,7 +5,7 @@ module.exports = fp(async (fastify, options) => {
   const { models, services } = fastify[options.name];
   const { Op } = fastify.sequelize.Sequelize;
 
-  const create = async ({ tenantId, orgId, avatar, name, email, phone, description }) => {
+  const create = async ({ tenantId, avatar, name, email, phone, description, tenantOrgId, roles }) => {
     if (email && (await models.user.count({ where: { email, tenantId } })) > 0) {
       throw new Error('邮箱不能重复');
     }
@@ -25,9 +25,11 @@ module.exports = fp(async (fastify, options) => {
       throw new Error('租户用户数量已达到上限');
     }
 
-    if (orgId) {
-      await services.org.detail({ id: orgId });
+    if (tenantOrgId) {
+      await services.org.detail({ id: tenantOrgId });
     }
+
+    const checkedRoles = await services.role.checkRoles({ tenantId, roles });
 
     return await models.user.create({
       avatar,
@@ -36,7 +38,8 @@ module.exports = fp(async (fastify, options) => {
       phone,
       description,
       tenantId,
-      orgId
+      tenantOrgId,
+      roles: checkedRoles
     });
   };
 
@@ -48,6 +51,17 @@ module.exports = fp(async (fastify, options) => {
     if (!tenantUser) {
       throw new Error('租户用户不存在');
     }
+    if (tenantUser.tenantId !== tenantId) {
+      throw new Error('租户用户不存在');
+    }
+
+    tenantUser.setDataValue(
+      'roleDetails',
+      (await services.role.rolesToList({ tenantId, roles: tenantUser.roles })).map(item => {
+        return { id: item.code, code: item.code, name: item.name, description: item.description, type: item.type };
+      })
+    );
+
     return tenantUser;
   };
 
@@ -200,8 +214,22 @@ module.exports = fp(async (fastify, options) => {
       order: [['createdAt', 'DESC']]
     });
 
+    const roles = await services.role.rolesToList({
+      tenantId,
+      roles: rows.reduce((acc, item) => {
+        return [...acc, ...item.roles];
+      }, [])
+    });
+
+    const rolesMap = new Map(roles.map(item => [item.id, { id: item.id, code: item.code, name: item.name, type: item.type, description: item.description }]));
     return {
-      pageData: rows,
+      pageData: rows.map(item => {
+        item.setDataValue(
+          'roles',
+          item.roles.map(role => rolesMap.get(role)).filter(item => !!item)
+        );
+        return item;
+      }),
       totalCount: count
     };
   };
@@ -213,7 +241,7 @@ module.exports = fp(async (fastify, options) => {
     return tenantUser;
   };
 
-  const save = async ({ id, tenantId, tenantOrgId, avatar, name, email, phone, description }) => {
+  const save = async ({ id, tenantId, tenantOrgId, avatar, name, email, phone, roles = [], description }) => {
     const tenantUser = await detail({ tenantId, id });
 
     if (email && (await models.user.count({ where: { email, id: { [Op.not]: tenantUser.id }, tenantId } })) > 0) {
@@ -226,7 +254,9 @@ module.exports = fp(async (fastify, options) => {
       throw new Error('手机号或邮箱不能同时为空');
     }
 
-    await tenantUser.update({ tenantOrgId, avatar, name, email, phone, description });
+    const checkedRoles = await services.role.checkRoles({ tenantId, roles });
+
+    await tenantUser.update({ tenantOrgId, avatar, name, email, phone, description, roles: checkedRoles });
 
     return tenantUser;
   };
@@ -234,6 +264,11 @@ module.exports = fp(async (fastify, options) => {
   const remove = async ({ id, tenantId }) => {
     const tenantUser = await detail({ tenantId, id });
     await tenantUser.destroy();
+  };
+
+  const permissionList = async ({ tenantId, id }) => {
+    const tenantUser = await detail({ tenantId, id });
+    return await services.role.combinedPermissions({ tenantId, roles: tenantUser.roles });
   };
 
   const getTenantUserInfo = async authenticatePayload => {
@@ -251,16 +286,22 @@ module.exports = fp(async (fastify, options) => {
       where: { tenantId: tenantUserDefault.tenantId, userId: authenticatePayload.id, status: 'open' }
     });
     if (!tenantUser) {
-      throw new Forbidden('不能进行此操作');
+      throw new Forbidden('当前租户用户不存在或账号被关闭');
     }
     if (tenantUser.tenant?.status !== 'open') {
-      throw new Error('租户不能使用');
+      throw new Forbidden('租户不能使用');
     }
 
     const tenantSetting = await services.setting.detail({ tenantId: tenantUser.tenantId });
     tenantUser.tenant.setDataValue('tenantSetting', tenantSetting);
     tenantUser.setDataValue('tenantSetting', tenantSetting);
-
+    tenantUser.setDataValue('permissions', (await permissionList({ tenantId: tenantUser.tenantId, id: tenantUser.id })).codes);
+    tenantUser.setDataValue(
+      'roleDetails',
+      (await services.role.rolesToList({ tenantId: tenantUserDefault.tenantId, roles: tenantUser.roles })).map(item => {
+        return { id: item.id, code: item.code, name: item.name, description: item.description, type: item.type };
+      })
+    );
     return tenantUser;
   };
 
