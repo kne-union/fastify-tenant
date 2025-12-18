@@ -16,6 +16,11 @@ module.exports = ({ DataTypes, options }) => {
         defaultValue: [],
         comment: '租户自定义组件'
       },
+      permissions: {
+        type: DataTypes.JSON,
+        defaultValue: [],
+        comment: '租户权限'
+      },
       options: {
         type: DataTypes.JSON,
         defaultValue: {},

@@ -63,7 +63,19 @@ module.exports = fp(async (fastify, options) => {
     if (role.type === 'system') {
       throw new Error('系统角色不能删除');
     }
-    // todo 检查是否有用户关联
+
+    if (
+      (await models.user.count({
+        where: {
+          tenantId: tenant.id,
+          roles: {
+            [Op.contains]: [role.code]
+          }
+        }
+      })) > 0
+    ) {
+      throw new Error('角色已被用户关联，不能删除');
+    }
     return await role.destroy();
   };
 
@@ -76,6 +88,89 @@ module.exports = fp(async (fastify, options) => {
     return await role.update({ status });
   };
 
+  const permissionList = async ({ tenantId, id }) => {
+    const tenant = await services.tenant.detail({ id: tenantId });
+    const role = await detail({ id, tenantId: tenant.id });
+    const tenantPermissions = await services.permission.tenantLevelList({ tenantId: tenant.id });
+    return {
+      codes: role.permissions,
+      permissions: tenantPermissions.permissions
+    };
+  };
+
+  const combinedPermissions = async ({ tenantId, roles = [] }) => {
+    const tenant = await services.tenant.detail({ id: tenantId });
+    const tenantPermissions = await services.permission.tenantLevelList({ tenantId: tenant.id });
+    const roleList = await models.role.findAll({
+      where: {
+        [Op.or]: [
+          {
+            id: {
+              [Op.in]: roles
+            }
+          },
+          {
+            type: 'system',
+            code: 'default'
+          }
+        ],
+        status: 'open',
+        tenantId: tenant.id
+      }
+    });
+    if (roles.indexOf('admin') > 1) {
+      return tenantPermissions;
+    }
+
+    const codes = roleList.reduce((acc, curr) => {
+      if (curr.permissions) {
+        curr.permissions.forEach(permission => {
+          if (!acc.includes(permission)) {
+            acc.push(permission);
+          }
+        });
+      }
+      return acc;
+    }, []);
+
+    return {
+      codes,
+      permissions: tenantPermissions.permissions
+    };
+  };
+
+  const savePermission = async ({ tenantId, id, permissions }) => {
+    const role = await detail({ tenantId, id });
+    const tenantPermissions = await services.permission.tenantLevelList({ tenantId });
+    await role.update({ permissions: permissions.filter(code => tenantPermissions.codes.indexOf(code) !== -1) });
+    return role;
+  };
+
+  const rolesFilter = async ({ tenantId, roles }) => {
+    const tenant = await services.tenant.detail({ id: tenantId });
+    return await models.role.findAll({
+      where: {
+        id: {
+          [Op.in]: roles
+        },
+        tenantId: tenant.id,
+        [Op.not]: {
+          type: 'system',
+          code: 'default'
+        }
+      }
+    });
+  };
+
+  //验证role是否存在
+  const checkRoles = async ({ tenantId, roles }) => {
+    return (await rolesFilter({ tenantId, roles })).map(({ id }) => id);
+  };
+
+  const rolesToList = async ({ tenantId, roles }) => {
+    return await rolesFilter({ tenantId, roles });
+  };
+
   Object.assign(fastify[options.name].services, {
     role: {
       create,
@@ -83,7 +178,12 @@ module.exports = fp(async (fastify, options) => {
       detail,
       save,
       remove,
-      setStatus
+      setStatus,
+      permissionList,
+      combinedPermissions,
+      savePermission,
+      checkRoles,
+      rolesToList
     }
   });
 });

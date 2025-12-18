@@ -712,6 +712,31 @@ module.exports = fp(async (fastify, options) => {
   );
 
   fastify.get(
+    `${options.prefix}/admin/user-permission-list`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '查看租户用户权限列表',
+        query: {
+          type: 'object',
+          properties: {
+            tenantId: {
+              type: 'string'
+            },
+            id: {
+              type: 'string'
+            }
+          },
+          required: ['tenantId', 'id']
+        }
+      }
+    },
+    async request => {
+      return await services.user.permissionList(request.query);
+    }
+  );
+
+  fastify.get(
     `${options.prefix}/admin/user-invite-token`,
     {
       onRequest: [userAuthenticate, adminAuthenticate],

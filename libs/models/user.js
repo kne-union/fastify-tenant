@@ -30,6 +30,11 @@ module.exports = ({ DataTypes, options }) => {
         comment: '状态',
         defaultValue: 'open'
       },
+      roles: {
+        type: DataTypes.JSONB,
+        comment: '角色',
+        defaultValue: []
+      },
       options: {
         type: DataTypes.JSONB,
         comment: '扩展字段'

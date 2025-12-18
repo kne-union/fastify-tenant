@@ -14,6 +14,11 @@ module.exports = ({ DataTypes, options }) => {
         comment: '类型',
         defaultValue: 'custom'
       },
+      permissions: {
+        type: DataTypes.JSON,
+        comment: '权限列表',
+        defaultValue: []
+      },
       description: {
         type: DataTypes.TEXT,
         comment: '描述'
