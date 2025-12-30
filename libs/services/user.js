@@ -5,7 +5,7 @@ module.exports = fp(async (fastify, options) => {
   const { models, services } = fastify[options.name];
   const { Op } = fastify.sequelize.Sequelize;
 
-  const create = async ({ tenantId, avatar, name, email, phone, description, tenantOrgId, roles }) => {
+  const create = async ({ tenantId, avatar, name, email, phone, description, tenantOrgId, roles, options }) => {
     if (email && (await models.user.count({ where: { email, tenantId } })) > 0) {
       throw new Error('邮箱不能重复');
     }
@@ -39,7 +39,8 @@ module.exports = fp(async (fastify, options) => {
       description,
       tenantId,
       roles: checkedRoles,
-      tenantOrgId
+      tenantOrgId,
+      options
     });
   };
 
@@ -241,7 +242,7 @@ module.exports = fp(async (fastify, options) => {
     return tenantUser;
   };
 
-  const save = async ({ id, tenantId, tenantOrgId, avatar, name, email, phone, roles = [], description }) => {
+  const save = async ({ id, tenantId, tenantOrgId, avatar, name, email, phone, roles = [], description, options }) => {
     const tenantUser = await detail({ tenantId, id });
 
     if (email && (await models.user.count({ where: { email, id: { [Op.not]: tenantUser.id }, tenantId } })) > 0) {
@@ -256,7 +257,7 @@ module.exports = fp(async (fastify, options) => {
 
     const checkedRoles = await services.role.checkRoles({ tenantId, roles });
 
-    await tenantUser.update({ tenantOrgId, avatar, name, email, phone, description, roles: checkedRoles });
+    await tenantUser.update({ tenantOrgId, avatar, name, email, phone, description, roles: checkedRoles, options });
 
     return tenantUser;
   };
