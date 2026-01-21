@@ -624,6 +624,31 @@ module.exports = fp(async (fastify, options) => {
     }
   );
 
+  fastify.get(
+    `${options.prefix}/admin/user-detail`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '获取租户用户详情',
+        query: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string'
+            },
+            tenantId: {
+              type: 'string'
+            }
+          },
+          required: ['id', 'tenantId']
+        }
+      }
+    },
+    async request => {
+      return await services.user.detail(Object.assign({}, request.query));
+    }
+  );
+
   fastify.post(
     `${options.prefix}/admin/user-set-status`,
     {
