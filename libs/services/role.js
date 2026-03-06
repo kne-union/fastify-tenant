@@ -172,6 +172,24 @@ module.exports = fp(async (fastify, options) => {
     return await rolesFilter({ tenantId, roles });
   };
 
+  const enums = async (authenticatePayload, { ids, names, codes }) => {
+    const { tenantId } = authenticatePayload;
+    const whereQuery = {
+      tenantId,
+      [Op.or]: [{ id: { [Op.in]: ids || [] } }, { name: { [Op.in]: names || [] } }, { code: { [Op.in]: codes || [] } }]
+    };
+    const positions = await models.role.findAll({
+      where: whereQuery
+    });
+
+    return positions.map(item => {
+      return {
+        value: item.id,
+        description: item.name
+      };
+    });
+  };
+
   Object.assign(fastify[options.name].services, {
     role: {
       create,
@@ -184,7 +202,8 @@ module.exports = fp(async (fastify, options) => {
       combinedPermissions,
       savePermission,
       checkRoles,
-      rolesToList
+      rolesToList,
+      enums
     }
   });
 });

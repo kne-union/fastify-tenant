@@ -2,6 +2,7 @@ const fp = require('fastify-plugin');
 
 module.exports = fp(async (fastify, options) => {
   const { models, services } = fastify[options.name];
+  const { Op } = fastify.sequelize.Sequelize;
 
   const list = async ({ tenantId }) => {
     return await models.org.findAll({
@@ -52,7 +53,25 @@ module.exports = fp(async (fastify, options) => {
     return await org.update(data);
   };
 
+  const enums = async (authenticatePayload, { ids, names }) => {
+    const { tenantId } = authenticatePayload;
+    const whereQuery = {
+      tenantId,
+      [Op.or]: [{ id: { [Op.in]: ids || [] } }, { name: { [Op.in]: names || [] } }]
+    };
+    const positions = await models.org.findAll({
+      where: whereQuery
+    });
+
+    return positions.map(item => {
+      return {
+        value: item.id,
+        description: item.name
+      };
+    });
+  };
+
   Object.assign(fastify[options.name].services, {
-    org: { list, detail, create, remove, save }
+    org: { list, detail, create, remove, save, enums }
   });
 });
