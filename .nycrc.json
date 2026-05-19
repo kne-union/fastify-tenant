@@ -1,0 +1,12 @@
+{
+  "all": true,
+  "include": ["libs/**/*.js", "index.js"],
+  "exclude": ["libs/**/example._js", "**/*.test.js", "test/**"],
+  "reporter": ["text-summary", "text", "html"],
+  "report-dir": "coverage",
+  "check-coverage": true,
+  "lines": 82,
+  "functions": 88,
+  "branches": 48,
+  "statements": 82
+}

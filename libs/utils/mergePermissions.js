@@ -1,4 +1,5 @@
 const get = require('lodash/get');
+const set = require('lodash/set');
 const cloneDeep = require('lodash/cloneDeep');
 const mergePermissions = (origin, target) => {
   let result = cloneDeep(origin);
@@ -22,7 +23,11 @@ const mergePermissions = (origin, target) => {
       });
       core(module.modules, `${path}.${sameCodeItemIndex}.modules`);
     });
-    result[path] = current.sort((a, b) => (b.index || 0) - (a.index || 0));
+    set(
+      result,
+      path,
+      current.sort((a, b) => (b.index || 0) - (a.index || 0))
+    );
   };
   core(target.modules);
   return result;

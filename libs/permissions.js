@@ -70,6 +70,11 @@ module.exports = {
             {
               name: '共享组',
               code: 'shared-group',
+              dataScope: {
+                open: true,
+                list: ['read', 'write'],
+                type: 'org'
+              },
               permissions: [
                 {
                   name: '创建',

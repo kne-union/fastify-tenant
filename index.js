@@ -2,9 +2,20 @@ const fp = require('fastify-plugin');
 const path = require('node:path');
 const yml = require('js-yaml');
 const fs = require('node:fs/promises');
+const { BusinessError } = require('./libs/utils/errors');
 
 module.exports = fp(
-  async (fastify, options) => {
+  async function (fastify, options) {
+    // 注册 BusinessError 全局错误处理器
+    fastify.setErrorHandler((error, request, reply) => {
+      if (error instanceof BusinessError) {
+        reply.status(error.status);
+        return { code: error.code, message: error.message };
+      }
+      // 交给 Fastify 默认处理
+      reply.send(error);
+    });
+
     options = Object.assign(
       {},
       {

@@ -119,7 +119,26 @@ module.exports = fp(async (fastify, options) => {
       schema: {
         summary: '保存公司信息',
         body: {
-          type: 'object'
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            fullName: { type: 'string' },
+            logo: { type: 'string' },
+            industry: { type: 'string' },
+            scale: { type: 'string' },
+            address: { type: 'string' },
+            phone: { type: 'string' },
+            email: { type: 'string' },
+            foundedDate: { type: 'string' },
+            companyTags: { type: 'array', items: { type: 'object' } },
+            website: { type: 'string' },
+            description: { type: 'string' },
+            banners: { type: 'array', items: { type: 'object' } },
+            teamDescription: { type: 'object' },
+            developmentHistory: { type: 'object' },
+            contact: { type: 'object' },
+            options: { type: 'object' }
+          }
         }
       }
     },
@@ -149,6 +168,11 @@ module.exports = fp(async (fastify, options) => {
             },
             description: {
               type: 'string'
+            },
+            leaderUserId: {
+              type: ['string', 'null'],
+              default: null,
+              description: '部门负责人（租户用户 ID），不传或 null 表示无负责人'
             }
           },
           required: ['name']
@@ -225,6 +249,11 @@ module.exports = fp(async (fastify, options) => {
             },
             description: {
               type: 'string'
+            },
+            leaderUserId: {
+              type: ['string', 'null'],
+              default: null,
+              description: '部门负责人（租户用户 ID），传 null 清空'
             }
           },
           required: ['id']
@@ -242,6 +271,53 @@ module.exports = fp(async (fastify, options) => {
   );
 
   fastify.post(
+    `${options.prefix}/org-batch-import`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '批量导入组织与用户（JSON，由前端解析 Excel 后提交）',
+        body: {
+          type: 'object',
+          properties: {
+            parentOrgId: {
+              type: 'string',
+              description: '锚点组织节点 ID，可选'
+            },
+            rows: {
+              type: 'array',
+              minItems: 1,
+              items: {
+                type: 'object',
+                properties: {
+                  rowType: { type: 'string', enum: ['org', 'user'] },
+                  orgName: { type: ['string', 'null'] },
+                  parentOrgName: { type: ['string', 'null'] },
+                  userName: { type: ['string', 'null'] },
+                  email: { type: ['string', 'null'] },
+                  phone: { type: ['string', 'null'] },
+                  description: { type: ['string', 'null'] },
+                  isLeader: { type: ['boolean', 'null'] }
+                },
+                required: ['rowType']
+              }
+            }
+          },
+          required: ['rows']
+        }
+      }
+    },
+    async request => {
+      const tenantId = request.tenantUserInfo.tenantId;
+      const { parentOrgId, rows } = request.body;
+      return services.org.importFromRows({
+        tenantId,
+        parentOrgId: parentOrgId ? String(parentOrgId).trim() : null,
+        rows
+      });
+    }
+  );
+
+  fastify.post(
     `${options.prefix}/user-create`,
     {
       onRequest: [userAuthenticate, authenticate.tenantUser],
@@ -255,6 +331,10 @@ module.exports = fp(async (fastify, options) => {
             },
             tenantOrgId: {
               type: 'string'
+            },
+            tenantOrgIds: {
+              type: 'array',
+              items: { type: 'string' }
             },
             avatar: {
               type: 'string'
@@ -326,6 +406,10 @@ module.exports = fp(async (fastify, options) => {
             },
             tenantOrgId: {
               type: 'string'
+            },
+            tenantOrgIds: {
+              type: 'array',
+              items: { type: 'string' }
             },
             avatar: {
               type: 'string'
