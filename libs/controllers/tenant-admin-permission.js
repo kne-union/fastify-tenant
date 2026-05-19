@@ -37,7 +37,13 @@ module.exports = fp(async (fastify, options) => {
             },
             filter: {
               type: 'object',
-              default: {}
+              default: {},
+              properties: {
+                keyword: { type: 'string' },
+                status: { type: 'string', enum: ['open', 'closed'] },
+                type: { type: 'string', enum: ['system', 'custom'] }
+              },
+              additionalProperties: true
             },
             perPage: {
               type: 'number',

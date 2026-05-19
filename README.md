@@ -12,6 +12,36 @@ npm i --save @kne/fastify-tenant
 
 ### 概述
 
+## 文档目录
+
+- [描述](#描述)
+- [安装](#安装)
+- [概述](#概述)
+- [文档目录](#文档目录)
+- [项目概述](#项目概述)
+- [核心功能](#核心功能)
+- [插件配置项](#插件配置项)
+- [数据模型](#数据模型)
+- [权限模块](#权限模块)
+- [安装使用](#安装使用)
+- [依赖要求](#依赖要求)
+- [示例](#示例)
+- [API](#api)
+- [租户用户 API](#租户用户-api)
+- [组织架构 API](#组织架构-api)
+- [租户用户管理 API](#租户用户管理-api)
+- [自定义组件 API](#自定义组件-api)
+- [角色管理 API](#角色管理-api)
+- [权限 API](#权限-api)
+- [管理员 - 租户管理 API](#管理员---租户管理-api)
+- [管理员 - 环境变量管理 API](#管理员---环境变量管理-api)
+- [管理员 - 自定义组件管理 API](#管理员---自定义组件管理-api)
+- [管理员 - 公司信息 API](#管理员---公司信息-api)
+- [管理员 - 组织架构 API](#管理员---组织架构-api)
+- [管理员 - 用户管理 API](#管理员---用户管理-api)
+- [管理员 - 角色管理 API](#管理员---角色管理-api)
+- [管理员 - 权限管理 API](#管理员---权限管理-api)
+
 ### 项目概述
 
 `@kne/fastify-tenant` 是一个基于 Fastify 框架的多租户系统插件。该插件提供了完整的租户管理功能，包括租户创建、用户管理、组织架构、角色权限等核心能力。
@@ -127,17 +157,25 @@ npm i --save @kne/fastify-tenant
 
 #### company（公司信息）
 
-| 字段                 | 类型     | 说明          |
-|--------------------|--------|-------------|
-| name               | STRING | 名称          |
-| fullName           | STRING | 全称          |
-| website            | STRING | 主页          |
-| description        | TEXT   | 描述          |
-| banners            | JSON   | Banner 图片列表 |
-| teamDescription    | JSON   | 团队介绍        |
-| developmentHistory | JSON   | 发展历程        |
-| contact            | JSON   | 联系方式        |
-| options            | JSONB  | 扩展字段        |
+| 字段                 | 类型       | 说明          |
+|--------------------|----------|-------------|
+| name               | STRING   | 名称          |
+| fullName           | STRING   | 全称          |
+| logo               | STRING   | Logo        |
+| industry           | STRING   | 行业          |
+| scale              | STRING   | 规模          |
+| address            | STRING   | 地址          |
+| phone              | STRING   | 电话          |
+| email              | STRING   | 邮箱          |
+| foundedDate        | DATEONLY | 成立日期        |
+| companyTags        | JSON     | 公司标签        |
+| website            | STRING   | 主页          |
+| description        | TEXT     | 描述          |
+| banners            | JSON     | Banner 图片列表 |
+| teamDescription    | JSON     | 团队介绍        |
+| developmentHistory | JSON     | 发展历程        |
+| contact            | JSON     | 联系方式（兼容）    |
+| options            | JSONB    | 扩展字段        |
 
 #### setting（租户设置）
 
@@ -246,6 +284,7 @@ POST `/api/tenant/org-create`
 | name        | body | string | 是  | 名称   |
 | parentId    | body | string | 否  | 父级ID |
 | description | body | string | 否  | 描述   |
+| leaderUserId | body | string | 否  | 部门负责人（租户用户 ID） |
 
 #### 获取租户组织
 
@@ -270,6 +309,41 @@ POST `/api/tenant/org-save`
 | id          | body | string | 是  | 组织节点ID |
 | name        | body | string | 否  | 名称     |
 | description | body | string | 否  | 描述     |
+| leaderUserId | body | string \| null | 否  | 部门负责人（租户用户 ID），传 null 清空 |
+
+#### 批量导入组织及负责人（JSON，当前租户）
+
+POST `/api/tenant/org-batch-import`
+
+`Content-Type: application/json`。需登录租户用户上下文；**无需传 tenantId**。典型用法：管理端在浏览器解析 Excel 后，将行数据放入 `rows` 再提交。
+
+| 参数          | 位置   | 类型     | 必填 | 说明 |
+|-------------|------|--------|----|------|
+| parentOrgId | body | string | 否  | 锚点组织节点 ID；不传则新组织挂在租户根下（仍可与行内「上级组织名称」配合） |
+| rows        | body | array  | 是  | 行对象列表，至少 1 条；每条须含 `orgName`（可为空字符串，与「全空行跳过」逻辑一致，详见服务实现） |
+
+`rows[]` 每项字段：
+
+| 字段            | 类型            | 必填 | 说明 |
+|---------------|---------------|----|------|
+| orgName       | string        | 是（键） | 组织名称 |
+| parentOrgName | string \| null | 否  | 上级组织名称（租户内已有或本批前面已创建的名称） |
+| leaderName    | string \| null | 否  | 负责人姓名 |
+| email         | string \| null | 否  | 邮箱 |
+| phone         | string \| null | 否  | 手机 |
+| description   | string \| null | 否  | 描述 |
+
+**成功时 HTTP 响应体**（与项目内 `@kne/fastify-response-data-format` 约定一致：`handler` 返回的对象作为 `data` 字段装入统一外壳）：
+
+| 字段路径 | 类型 | 说明 |
+|---------|------|------|
+| `code` | number | 成功为 `0` |
+| `data.createdOrgs` | number | 本批新建组织数 |
+| `data.createdUsers` | number | 本批新建租户用户数 |
+| `data.reusedUsers` | number | 本批匹配并复用的已存在用户数 |
+| `data.rowCount` | number | 本批有效导入行数（与服务端 `importFromRows` 中 `effective.length` 一致） |
+
+管理员等价接口见下文「管理员 - 组织架构 API」中的 **批量导入组织及负责人**（`data` 内字段相同）。
 
 ---
 
@@ -677,6 +751,21 @@ POST `/api/tenant/admin/org-save`
 | id          | body | string | 是  | 组织节点ID |
 | name        | body | string | 否  | 名称     |
 | description | body | string | 否  | 描述     |
+| leaderUserId | body | string \| null | 否  | 部门负责人（租户用户 ID），传 null 清空 |
+
+#### 批量导入组织及负责人（JSON）
+
+POST `/api/tenant/admin/org-batch-import`
+
+`Content-Type: application/json`。需管理员权限；**body 须含 tenantId**。
+
+| 参数          | 位置   | 类型     | 必填 | 说明 |
+|-------------|------|--------|----|------|
+| tenantId    | body | string | 是  | 租户ID |
+| parentOrgId | body | string | 否  | 锚点组织节点 ID |
+| rows        | body | array  | 是  | 行对象列表，字段同租户接口 `POST /api/tenant/org-batch-import` 的 `rows[]` |
+
+成功时 HTTP 响应体与租户接口 **批量导入** 相同：`code === 0`，统计在 `data.createdOrgs`、`data.createdUsers`、`data.reusedUsers`、`data.rowCount`。
 
 ---
 
@@ -882,3 +971,10 @@ POST `/api/tenant/admin/permission/save`
 |-------------|------|--------|----|--------|
 | tenantId    | body | string | 是  | 租户ID   |
 | permissions | body | array  | 是  | 权限编码列表 |
+
+---
+
+## 开发与测试
+
+- **`npm test`**：Mocha 单元测试。
+- **`npm run test:coverage`**：nyc 覆盖率（配置见项目根目录 `.nycrc.json`）。**仅统计 `libs/**`**；根目录 **`index.js` 入口插件由宿主应用的集成/E2E 覆盖**，单测不纳入 nyc，也不在阈值内考核。

@@ -2,23 +2,28 @@ const fp = require('fastify-plugin');
 const groupBy = require('lodash/groupBy');
 const transform = require('lodash/transform');
 const get = require('lodash/get');
+const { withTransaction } = require('../utils/withTransaction');
 
 module.exports = fp(async (fastify, options) => {
   const { models } = fastify[options.name];
-  const appendArgs = async ({ tenantId, args }) => {
-    let setting = await detail({ tenantId });
-    args.forEach(({ key }) => {
-      if ((setting.args || []).find(item => item.key === key)) {
-        throw new Error(`环境变量${key}已存在，请先删除后再添加新的值`);
-      }
-    });
-    const { secrets, args: targetArgs } = groupBy(args, item => (item.secret ? 'secrets' : 'args'));
-    await saveSecrets({ secrets, tenantId });
-    setting.args = [...(setting.args || []), ...(targetArgs || []), ...(secrets || []).map(item => Object.assign({}, item, { value: '******' }))];
-    await setting.save();
+
+  const appendArgs = async ({ tenantId, args }, outerTransaction) => {
+    const run = async t => {
+      let setting = await detail({ tenantId });
+      args.forEach(({ key }) => {
+        if ((setting.args || []).find(item => item.key === key)) {
+          throw new Error(`环境变量${key}已存在，请先删除后再添加新的值`);
+        }
+      });
+      const { secrets, args: targetArgs } = groupBy(args, item => (item.secret ? 'secrets' : 'args'));
+      await saveSecrets({ secrets, tenantId, transaction: t });
+      setting.args = [...(setting.args || []), ...(targetArgs || []), ...(secrets || []).map(item => Object.assign({}, item, { value: '******' }))];
+      await setting.save({ transaction: t });
+    };
+    return withTransaction(fastify, run, outerTransaction);
   };
 
-  const saveSecrets = async ({ secrets, tenantId }) => {
+  const saveSecrets = async ({ secrets, tenantId, transaction }) => {
     if (!(secrets && secrets.length > 0)) {
       return;
     }
@@ -26,28 +31,33 @@ module.exports = fp(async (fastify, options) => {
     const setting = await models.setting.findOne({
       where: {
         tenantId
-      }
+      },
+      transaction
     });
     const newSecrets = setting.secrets.slice(0);
     setting.secrets = newSecrets.concat(secrets);
-    await setting.save();
+    await setting.save({ transaction });
   };
 
-  const removeSecret = async ({ tenantId, key }) => {
-    await detail({ tenantId });
-    const setting = await models.setting.findOne({
-      where: {
-        tenantId
+  const removeSecret = async ({ tenantId, key }, outerTransaction) => {
+    const run = async t => {
+      await detail({ tenantId });
+      const setting = await models.setting.findOne({
+        where: {
+          tenantId
+        },
+        transaction: t
+      });
+      const newSecrets = setting.secrets.slice(0);
+      const secretIndex = newSecrets.findIndex(item => item.key === key);
+      if (secretIndex === -1) {
+        return;
       }
-    });
-    const newSecrets = setting.secrets.slice(0);
-    const secretIndex = newSecrets.findIndex(item => item.key === key);
-    if (secretIndex === -1) {
-      return;
-    }
-    newSecrets.splice(secretIndex, 1);
-    setting.secrets = newSecrets;
-    await setting.save();
+      newSecrets.splice(secretIndex, 1);
+      setting.secrets = newSecrets;
+      await setting.save({ transaction: t });
+    };
+    return withTransaction(fastify, run, outerTransaction);
   };
 
   const getSecrets = async ({ tenantId, key }) => {
@@ -176,25 +186,30 @@ module.exports = fp(async (fastify, options) => {
         {}
       )
     );
+    // 确保 secrets 不被暴露给前端
+    setting.setDataValue('secrets', undefined);
     return setting;
   };
 
-  const removeArg = async ({ tenantId, key }) => {
-    const setting = await detail({ tenantId });
-    const argIndex = (setting?.args || []).findIndex(item => item.key === key);
-    if (argIndex === -1) {
-      throw new Error(`${key}已不存在`);
-    }
-    const arg = setting.args[argIndex];
+  const removeArg = async ({ tenantId, key }, outerTransaction) => {
+    const run = async t => {
+      const setting = await detail({ tenantId });
+      const argIndex = (setting?.args || []).findIndex(item => item.key === key);
+      if (argIndex === -1) {
+        throw new Error(`${key}已不存在`);
+      }
+      const arg = setting.args[argIndex];
 
-    if (arg.secret) {
-      await removeSecret({ tenantId, key });
-    }
+      if (arg.secret) {
+        await removeSecret({ tenantId, key }, t);
+      }
 
-    const newArgs = setting.args.slice(0);
-    newArgs.splice(argIndex, 1);
-    setting.args = newArgs;
-    await setting.save();
+      const newArgs = setting.args.slice(0);
+      newArgs.splice(argIndex, 1);
+      setting.args = newArgs;
+      await setting.save({ transaction: t });
+    };
+    return withTransaction(fastify, run, outerTransaction);
   };
 
   const savePermissions = async ({ tenantId, permissions }) => {

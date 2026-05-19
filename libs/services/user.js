@@ -1,51 +1,82 @@
 const fp = require('fastify-plugin');
 const { Forbidden } = require('http-errors');
+const { BusinessError } = require('../utils/errors');
+const { normalizePhone } = require('../utils/phone');
+const { escapeLike } = require('../utils/escapeLike');
+const { collectOrgSubtreeIds } = require('../utils/dataScopeOrgIds');
+const { buildOrgNamePath } = require('../utils/orgPath');
+const { normalizeTenantUserStatus } = require('../utils/normalizeTenantUserStatus');
+const { pickOrgIdsFromInput, buildUserOrgMembershipWhere, attachUserOrgDisplay, getUserOrgIds } = require('../utils/tenantOrgIds');
 
 module.exports = fp(async (fastify, options) => {
   const { models, services } = fastify[options.name];
   const { Op } = fastify.sequelize.Sequelize;
 
-  const create = async ({ tenantId, avatar, name, email, phone, description, tenantOrgId, roles, options }) => {
-    if (email && (await models.user.count({ where: { email, tenantId } })) > 0) {
-      throw new Error('邮箱不能重复');
+  const assertTenantOrgIds = async ({ tenantId, tenantOrgIds, transaction }) => {
+    for (const orgId of tenantOrgIds) {
+      await services.org.detail({ id: orgId, transaction });
     }
-    if (phone && (await models.user.count({ where: { phone, tenantId } })) > 0) {
-      throw new Error('手机号不能重复');
+  };
+
+  const create = async ({ tenantId, avatar, name, email, phone: phoneRaw, description, tenantOrgId, tenantOrgIds: tenantOrgIdsInput, roles, options, transaction }) => {
+    const phone = phoneRaw ? normalizePhone(phoneRaw) : phoneRaw;
+    if (email && (await models.user.count({ where: { email, tenantId }, transaction })) > 0) {
+      throw new BusinessError('USER_EMAIL_DUPLICATE', '邮箱不能重复');
+    }
+    if (phone && (await models.user.count({ where: { phone, tenantId }, transaction })) > 0) {
+      throw new BusinessError('USER_PHONE_DUPLICATE', '手机号不能重复');
     }
     if (!email && !phone) {
-      throw new Error('手机号或邮箱不能同时为空');
+      throw new BusinessError('USER_CONTACT_REQUIRED', '手机号或邮箱不能同时为空');
     }
 
-    const tenant = await services.tenant.detail({ id: tenantId });
+    let tenant;
+    if (transaction) {
+      tenant = await models.tenant.findByPk(tenantId, { transaction });
+      if (!tenant) {
+        throw new Error('租户不存在');
+      }
+    } else {
+      tenant = await services.tenant.detail({ id: tenantId, withTenantSetting: false });
+    }
     const currentCount = await models.user.count({
-      where: { tenantId: tenantId }
+      where: { tenantId: tenantId },
+      transaction
     });
 
     if (currentCount >= tenant.accountCount) {
       throw new Error('租户用户数量已达到上限');
     }
 
-    if (tenantOrgId) {
-      await services.org.detail({ id: tenantOrgId });
+    const { tenantOrgIds, tenantOrgId: primaryOrgId } = pickOrgIdsFromInput({
+      tenantOrgId,
+      tenantOrgIds: tenantOrgIdsInput
+    });
+    if (tenantOrgIds.length) {
+      await assertTenantOrgIds({ tenantId, tenantOrgIds, transaction });
     }
 
     const checkedRoles = await services.role.checkRoles({ tenantId, roles });
 
-    return await models.user.create({
-      avatar,
-      name,
-      email,
-      phone,
-      description,
-      tenantId,
-      roles: checkedRoles,
-      tenantOrgId,
-      options
-    });
+    return await models.user.create(
+      {
+        avatar,
+        name,
+        email,
+        phone,
+        description,
+        tenantId,
+        roles: checkedRoles,
+        tenantOrgId: primaryOrgId,
+        tenantOrgIds,
+        options
+      },
+      { transaction }
+    );
   };
 
   const detail = async ({ tenantId, id }) => {
-    await services.tenant.detail({ id: tenantId });
+    await services.tenant.detail({ id: tenantId, withTenantSetting: false });
     const tenantUser = await models.user.findByPk(id, {
       include: [models.org, models.tenant]
     });
@@ -62,6 +93,13 @@ module.exports = fp(async (fastify, options) => {
         return { id: item.code, code: item.code, name: item.name, description: item.description, type: item.type };
       })
     );
+
+    const orgRows = await models.org.findAll({
+      where: { tenantId },
+      attributes: ['id', 'name', 'parentId']
+    });
+    const orgById = new Map(orgRows.map(o => [String(o.id), o]));
+    attachUserOrgDisplay(tenantUser, orgById, buildOrgNamePath);
 
     return tenantUser;
   };
@@ -80,7 +118,7 @@ module.exports = fp(async (fastify, options) => {
 
   const inviteToken = async ({ tenantId, id }) => {
     const tenantUser = await detail({ tenantId, id });
-    const token = fastify.jwt.sign({ payload: { id: tenantUser.id, tenantId: tenantUser.tenantId } });
+    const token = fastify.jwt.sign({ payload: { id: tenantUser.id, tenantId: tenantUser.tenantId } }, { expiresIn: '7d' });
     return { token };
   };
 
@@ -164,7 +202,7 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const setDefaultTenant = async (authenticatePayload, { tenantId }) => {
-    await services.tenant.detail({ id: tenantId });
+    await services.tenant.detail({ id: tenantId, withTenantSetting: false });
     const tenantUser = await models.user.findOne({
       where: { tenantId: tenantId, userId: authenticatePayload.id }
     });
@@ -180,7 +218,7 @@ module.exports = fp(async (fastify, options) => {
         userId: authenticatePayload.id
       });
     } else {
-      tenantUserDefault.update({
+      await tenantUserDefault.update({
         tenantId
       });
     }
@@ -189,27 +227,66 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const list = async ({ tenantId, filter = {}, perPage, currentPage }) => {
-    const whereQuery = {};
-    if (filter['keyword']) {
-      whereQuery[Op.or] = [
-        {
-          name: {
-            [Op.like]: `%${filter['keyword']}%`
-          }
-        },
-        {
-          description: {
-            [Op.like]: `%${filter['keyword']}%`
-          }
-        }
+    const whereQuery = { tenantId };
+    const keyword = filter.keyword != null ? String(filter.keyword).trim() : '';
+    if (keyword) {
+      const escaped = escapeLike(keyword);
+      whereQuery[Op.or] = [{ name: { [Op.like]: `%${escaped}%` } }, { description: { [Op.like]: `%${escaped}%` } }];
+    }
+    const statusFilter = normalizeTenantUserStatus(filter.status);
+    if (statusFilter) {
+      whereQuery.status = statusFilter;
+    }
+    const tenantOrgId = filter.tenantOrgId != null ? String(filter.tenantOrgId).trim() : '';
+    const orgRows = await models.org.findAll({
+      where: { tenantId },
+      attributes: ['id', 'name', 'parentId']
+    });
+    const orgById = new Map(orgRows.map(o => [String(o.id), o]));
+    if (tenantOrgId) {
+      const orgIds = [
+        ...collectOrgSubtreeIds(
+          orgRows.map(o => ({ id: o.id, parentId: o.parentId })),
+          tenantOrgId
+        )
       ];
+      const orgMembershipWhere = buildUserOrgMembershipWhere(orgIds.length > 0 ? orgIds : [tenantOrgId], Op);
+      if (orgMembershipWhere) {
+        whereQuery[Op.and] = [...(whereQuery[Op.and] || []), orgMembershipWhere];
+      }
+    }
+    const toFilterArray = value => {
+      if (value == null || value === '') {
+        return [];
+      }
+      return Array.isArray(value) ? value : [value];
+    };
+    const roleIds = toFilterArray(filter.roles)
+      .concat(toFilterArray(filter.role))
+      .map(role => String(role).trim())
+      .filter(Boolean);
+    if (roleIds.length === 1) {
+      whereQuery.roles = { [Op.contains]: [roleIds[0]] };
+    } else if (roleIds.length > 1) {
+      const roleOr = roleIds.map(roleId => ({ roles: { [Op.contains]: [roleId] } }));
+      const roleCondition = { [Op.or]: roleOr };
+      if (whereQuery[Op.or]) {
+        const keywordOr = whereQuery[Op.or];
+        delete whereQuery[Op.or];
+        whereQuery[Op.and] = [...(whereQuery[Op.and] || []), { [Op.or]: keywordOr }, roleCondition];
+      } else {
+        whereQuery[Op.and] = [...(whereQuery[Op.and] || []), roleCondition];
+      }
+    }
+
+    const id = filter.id != null ? String(filter.id).trim() : '';
+    if (id) {
+      whereQuery.id = id;
     }
 
     const { count, rows } = await models.user.findAndCountAll({
       include: models.org,
-      where: Object.assign({}, whereQuery, {
-        tenantId
-      }),
+      where: whereQuery,
       offset: perPage * (currentPage - 1),
       limit: perPage,
       order: [['createdAt', 'DESC']]
@@ -229,6 +306,7 @@ module.exports = fp(async (fastify, options) => {
           'roles',
           item.roles.map(role => rolesMap.get(role)).filter(item => !!item)
         );
+        attachUserOrgDisplay(item, orgById, buildOrgNamePath);
         return item;
       }),
       totalCount: count
@@ -236,34 +314,73 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const setStatus = async ({ tenantId, id, status }) => {
+    const normalized = normalizeTenantUserStatus(status);
+    if (!normalized) {
+      throw new Error('无效的用户状态');
+    }
     const tenantUser = await detail({ tenantId, id });
-    await tenantUser.update({ status });
+    await tenantUser.update({ status: normalized });
 
     return tenantUser;
   };
 
-  const save = async ({ id, tenantId, tenantOrgId, avatar, name, email, phone, roles = [], description, options }) => {
+  const save = async ({ id, tenantId, tenantOrgId, tenantOrgIds: tenantOrgIdsInput, avatar, name, email, phone, roles = [], description, options }) => {
     const tenantUser = await detail({ tenantId, id });
 
+    if (phone) {
+      phone = normalizePhone(phone);
+    }
     if (email && (await models.user.count({ where: { email, id: { [Op.not]: tenantUser.id }, tenantId } })) > 0) {
-      throw new Error('邮箱不能重复');
+      throw new BusinessError('USER_EMAIL_DUPLICATE', '邮箱不能重复');
     }
     if (phone && (await models.user.count({ where: { phone, id: { [Op.not]: tenantUser.id }, tenantId } })) > 0) {
-      throw new Error('手机号不能重复');
+      throw new BusinessError('USER_PHONE_DUPLICATE', '手机号不能重复');
     }
     if (!email && !phone) {
-      throw new Error('手机号或邮箱不能同时为空');
+      throw new BusinessError('USER_CONTACT_REQUIRED', '手机号或邮箱不能同时为空');
     }
 
     const checkedRoles = await services.role.checkRoles({ tenantId, roles });
+    const previousOrgIds = getUserOrgIds(tenantUser);
+    const { tenantOrgIds, tenantOrgId: primaryOrgId } = pickOrgIdsFromInput({
+      tenantOrgId,
+      tenantOrgIds: tenantOrgIdsInput
+    });
+    if (tenantOrgIds.length) {
+      await assertTenantOrgIds({ tenantId, tenantOrgIds });
+    }
+    const removedOrgIds = previousOrgIds.filter(orgId => !tenantOrgIds.includes(orgId));
+    if (removedOrgIds.length) {
+      await models.org.update(
+        { leaderUserId: null },
+        {
+          where: {
+            tenantId,
+            leaderUserId: tenantUser.id,
+            id: { [Op.in]: removedOrgIds }
+          }
+        }
+      );
+    }
 
-    await tenantUser.update({ tenantOrgId, avatar, name, email, phone, description, roles: checkedRoles, options });
+    await tenantUser.update({
+      tenantOrgId: primaryOrgId,
+      tenantOrgIds,
+      avatar,
+      name,
+      email,
+      phone,
+      description,
+      roles: checkedRoles,
+      options
+    });
 
     return tenantUser;
   };
 
   const remove = async ({ id, tenantId }) => {
     const tenantUser = await detail({ tenantId, id });
+    await models.org.update({ leaderUserId: null }, { where: { leaderUserId: id, tenantId } });
     await tenantUser.destroy();
   };
 

@@ -1,5 +1,6 @@
 const fp = require('fastify-plugin');
 const pick = require('lodash/pick');
+const { escapeLike } = require('../utils/escapeLike');
 
 module.exports = fp(async (fastify, options) => {
   const { models, services } = fastify[options.name];
@@ -44,7 +45,7 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const save = async ({ id, ...data }) => {
-    const tenant = await detail({ id });
+    const tenant = await detail({ id, withTenantSetting: false });
     await tenant.update(pick(data, ['name', 'description', 'logo', 'accountCount', 'themeColor', 'supportLanguage', 'defaultLanguage', 'serviceStartTime', 'serviceEndTime']));
     return tenant;
   };
@@ -57,15 +58,16 @@ module.exports = fp(async (fastify, options) => {
       }
     });
     if (filter['keyword']) {
+      const escaped = escapeLike(filter['keyword']);
       whereQuery[Op.or] = [
         {
           name: {
-            [Op.like]: `%${filter['keyword']}%`
+            [Op.like]: `%${escaped}%`
           }
         },
         {
           description: {
-            [Op.like]: `%${filter['keyword']}%`
+            [Op.like]: `%${escaped}%`
           }
         }
       ];
@@ -81,32 +83,34 @@ module.exports = fp(async (fastify, options) => {
     return { pageData: rows, totalCount: count };
   };
 
-  const detail = async ({ id }) => {
+  const detail = async ({ id, withTenantSetting = true }) => {
     const tenant = await models.tenant.findByPk(id, {
       include: [models.company]
     });
     if (!tenant) {
       throw new Error('租户不存在');
     }
-    const tenantSetting = await services.setting.detail({ tenantId: tenant.id });
-    tenant.setDataValue('tenantSetting', tenantSetting);
+    if (withTenantSetting) {
+      const tenantSetting = await services.setting.detail({ tenantId: tenant.id });
+      tenant.setDataValue('tenantSetting', tenantSetting);
+    }
     return tenant;
   };
 
   const setStatus = async ({ id, status }) => {
-    const tenant = await detail({ id });
+    const tenant = await detail({ id, withTenantSetting: false });
     await tenant.update({ status });
     return tenant;
   };
 
   const remove = async ({ id }) => {
-    const tenant = await detail({ id });
+    const tenant = await detail({ id, withTenantSetting: false });
     await services.company.remove({ tenantId: id });
-    await tenant.destroy(id);
+    await tenant.destroy();
   };
 
   const getToken = async ({ id }) => {
-    const tenant = await detail({ id });
+    const tenant = await detail({ id, withTenantSetting: false });
     const token = fastify.jwt.sign({ payload: { id: tenant.id } });
     return { token };
   };

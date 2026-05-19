@@ -9,6 +9,39 @@ module.exports = ({ DataTypes, options }) => {
         type: DataTypes.STRING,
         comment: '全称'
       },
+      logo: {
+        type: DataTypes.STRING,
+        comment: 'Logo'
+      },
+      industry: {
+        type: DataTypes.STRING,
+        comment: '行业'
+      },
+      scale: {
+        type: DataTypes.STRING,
+        comment: '规模'
+      },
+      address: {
+        type: DataTypes.STRING,
+        comment: '地址'
+      },
+      phone: {
+        type: DataTypes.STRING,
+        comment: '电话'
+      },
+      email: {
+        type: DataTypes.STRING,
+        comment: '邮箱'
+      },
+      foundedDate: {
+        type: DataTypes.DATEONLY,
+        comment: '成立日期'
+      },
+      companyTags: {
+        type: DataTypes.JSON,
+        comment: '公司标签',
+        defaultValue: []
+      },
       website: {
         type: DataTypes.STRING,
         comment: '主页'

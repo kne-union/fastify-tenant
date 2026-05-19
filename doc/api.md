@@ -1,20 +1,197 @@
+### 插件注册
+
+| 属性名 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| dbTableNamePrefix | string | `t_` | 数据库表名前缀 |
+| name | string | `tenant` | 插件命名空间名称 |
+| prefix | string | `/api/tenant` | API 路由前缀 |
+| clientTokenHeader | string | `x-client-user-token` | 客户端用户令牌请求头 |
+| tenantUserContextName | string | `tenantUserInfo` | 租户用户上下文名称 |
+| getUserModel | function | 使用 fastify-account 的 user 模型 | 获取用户模型函数 |
+| getUserAuthenticate | function | 使用 fastify-account 的用户认证 | 获取用户认证函数 |
+| getAdminUserAuthenticate | function | 使用 fastify-account 的管理员认证 | 获取管理员认证函数 |
+| permissionsProfile | string | `./libs/permissions.js` | 权限配置文件路径（支持 .js / .yml / .json） |
+
+### 数据模型
+
+#### tenant（租户）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| name | STRING | 租户名称（唯一） |
+| status | ENUM | 状态：open / closed |
+| themeColor | STRING | 主题色 |
+| logo | STRING | Logo |
+| accountCount | INTEGER | 最大账号数量，默认 10 |
+| description | TEXT | 描述 |
+| supportLanguage | JSON | 支持语言，默认 ['zh-CN', 'en-US'] |
+| defaultLanguage | STRING | 默认语言，默认 zh-CN |
+| serviceStartTime | DATE | 服务开始时间 |
+| serviceEndTime | DATE | 服务结束时间 |
+| options | JSONB | 扩展字段 |
+
+#### user（租户用户）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| avatar | STRING | 头像 |
+| name | STRING | 姓名 |
+| gender | ENUM | 性别：F / M |
+| email | STRING | 邮箱（租户内唯一） |
+| phone | STRING | 手机号 |
+| description | TEXT | 描述 |
+| status | ENUM | 状态：open / closed |
+| tenantOrgId | STRING | 主组织 ID（兼容，推荐使用 tenantOrgIds） |
+| tenantOrgIds | JSON | 所属组织 ID 列表 |
+| roles | JSON | 角色 ID 列表 |
+| options | JSONB | 扩展字段 |
+
+#### role（角色）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| name | STRING | 名称 |
+| code | STRING | 编码（租户内唯一） |
+| type | ENUM | 类型：system / custom |
+| permissions | JSON | 权限编码列表 |
+| description | TEXT | 描述 |
+| status | ENUM | 状态：open / closed |
+| options | JSONB | 扩展字段 |
+
+#### org（组织）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| name | STRING | 名称 |
+| description | TEXT | 描述 |
+| index | INTEGER | 排序 |
+| parentId | STRING | 父级 ID |
+| leaderUserId | STRING | 部门负责人（租户用户 ID） |
+| options | JSONB | 扩展字段 |
+
+#### company（公司信息）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| name | STRING | 名称 |
+| fullName | STRING | 全称 |
+| logo | STRING | Logo |
+| industry | STRING | 行业 |
+| scale | STRING | 规模 |
+| address | STRING | 地址 |
+| phone | STRING | 电话 |
+| email | STRING | 邮箱 |
+| foundedDate | DATEONLY | 成立日期 |
+| companyTags | JSON | 公司标签 |
+| website | STRING | 主页 |
+| description | TEXT | 描述 |
+| banners | JSON | Banner 图片列表 |
+| teamDescription | JSON | 团队介绍 |
+| developmentHistory | JSON | 发展历程 |
+| contact | JSON | 联系方式 |
+| options | JSONB | 扩展字段 |
+
+#### setting（租户设置）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| args | JSON | 环境变量 |
+| secrets | JSON | 密钥（不通过 API 返回） |
+| customComponents | JSON | 自定义组件 |
+| permissions | JSON | 租户权限 |
+| options | JSON | 配置项 |
+
+#### shared_group（共享组）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| name | STRING | 共享组名称 |
+| description | TEXT | 说明 |
+| sharedModules | JSON | 共享模块列表 `[{ moduleCode, access }]`，access 为 read / write |
+| createdTenantUserId | STRING | 创建人（租户用户 ID） |
+| status | ENUM | 状态：open / closed |
+| options | JSONB | 扩展字段 |
+
+#### shared_group_data_source（共享组数据来源）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| sharedGroupId | STRING | 共享组 ID |
+| tenantUserId | STRING | 数据来源租户用户 ID |
+
+#### shared_group_member（共享组成员）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| sharedGroupId | STRING | 共享组 ID |
+| tenantUserId | STRING | 共享组成员租户用户 ID |
+
+### 权限模块
+
+默认权限配置包含以下模块：
+
+| 子模块 | 权限 | dataScope |
+|--------|------|-----------|
+| 公司信息 (company-setting) | view, edit | - |
+| 组织架构 (org) | create, view, edit, remove | - |
+| 角色管理 (role) | create, view, edit, remove | - |
+| 共享组 (shared-group) | create, view, edit, remove | open: true, list: [read, write], type: org |
+| 用户管理 (user-manager) | create, view, edit, remove, invite | - |
+
+### 程序化 API
+
+插件注册后通过 `fastify[options.name]` 访问命名空间，提供以下子模块：
+
+| 子模块 | 说明 |
+|--------|------|
+| `services.tenant` | 租户管理服务 |
+| `services.user` | 用户管理服务 |
+| `services.org` | 组织架构服务 |
+| `services.role` | 角色管理服务 |
+| `services.permission` | 权限管理服务 |
+| `services.company` | 公司信息服务 |
+| `services.setting` | 租户设置服务 |
+| `services.sharedGroup` | 共享组服务 |
+| `services.dataScope` | 数据范围服务 |
+| `authenticate.tenantUser` | 租户用户认证中间件 |
+| `utils.mergePermissions` | 合并权限配置 |
+| `utils.flattenPermissions` | 展平权限配置 |
+| `appendPermissions(outside)` | 运行时追加权限配置 |
+
+#### dataScope 服务方法
+
+| 方法 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `resolveOrgRuleTenantUserIds` | `{ tenantId, currentTenantUserId, scope?, type?, transaction? }` | `string[]` | 按组织范围解析可见租户用户 ID |
+| `resolveOwnerScopeTenantUserIds` | `{ tenantId, currentTenantUserId, transaction? }` | `string[]` | 本人 + 作为负责人所辖部门内用户 |
+| `resolveSharedGroupDataSourceUserIds` | `{ tenantId, currentTenantUserId, moduleCode, transaction? }` | `string[]` | 共享组数据来源用户 ID |
+| `resolveVisibleTenantUserIds` | `{ tenantId, currentTenantUserId, scope?, type?, moduleCode?, transaction? }` | `string[]` | 合并组织规则与共享组数据来源 |
+| `buildRowScopeWhere` | `{ tenantId, currentTenantUserId, scope?, type?, fieldKey?, moduleCode?, transaction? }` | `{ tenantUserIds, where }` | 生成 Sequelize where 片段 |
+| `resolveTenantUserIdsByPermissionCode` | `{ tenantId, currentTenantUserId, permissionCode, permissions?, transaction? }` | `{ tenantUserIds, moduleCode, type, dataScopeOpen }` | 按权限码解析可见用户 |
+
+dataScope type 取值：`self`（仅本人）、`owner`（本人 + 负责部门）、`org`（同组织）、`orgSubtree`（组织子树）。
+
+---
+
 ### 租户用户 API
+
+以下接口需用户认证，租户侧接口自动从上下文获取 `tenantId`。
 
 #### 解析租户邀请数据
 
 POST `/api/tenant/parse-join-token`
 
-| 参数    | 位置   | 类型     | 必填 | 说明   |
-|-------|------|--------|----|------|
-| token | body | string | 是  | 邀请令牌 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| token | body | string | 是 | 邀请令牌 |
 
 #### 加入租户
 
 POST `/api/tenant/join`
 
-| 参数    | 位置   | 类型     | 必填 | 说明   |
-|-------|------|--------|----|------|
-| token | body | string | 是  | 邀请令牌 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| token | body | string | 是 | 邀请令牌 |
 
 #### 用户可用租户列表
 
@@ -26,15 +203,15 @@ GET `/api/tenant/available-list`
 
 POST `/api/tenant/switch-default-tenant`
 
-| 参数       | 位置   | 类型     | 必填 | 说明   |
-|----------|------|--------|----|------|
-| tenantId | body | string | 是  | 租户ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
 
 #### 获取登录租户用户信息
 
 GET `/api/tenant/getUserInfo`
 
-无参数
+无参数。返回 `{ userInfo, tenantUserInfo, company, tenant }`。
 
 #### 获取公司信息
 
@@ -46,23 +223,40 @@ GET `/api/tenant/company-detail`
 
 POST `/api/tenant/company-save`
 
-| 参数 | 位置   | 类型     | 必填 | 说明     |
-|----|------|--------|----|--------|
-| -  | body | object | -  | 公司信息对象 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| name | body | string | 否 | 公司名称 |
+| fullName | body | string | 否 | 公司全称 |
+| logo | body | string | 否 | Logo |
+| industry | body | string | 否 | 行业 |
+| scale | body | string | 否 | 规模 |
+| address | body | string | 否 | 地址 |
+| phone | body | string | 否 | 电话 |
+| email | body | string | 否 | 邮箱 |
+| foundedDate | body | string | 否 | 成立日期 |
+| companyTags | body | array\<object\> | 否 | 公司标签 |
+| website | body | string | 否 | 主页 |
+| description | body | string | 否 | 描述 |
+| banners | body | array\<object\> | 否 | Banner 图片列表 |
+| teamDescription | body | object | 否 | 团队介绍 |
+| developmentHistory | body | object | 否 | 发展历程 |
+| contact | body | object | 否 | 联系方式 |
+| options | body | object | 否 | 扩展字段 |
 
 ---
 
-### 组织架构 API
+### 组织架构 API（租户侧）
 
 #### 创建组织节点
 
 POST `/api/tenant/org-create`
 
-| 参数          | 位置   | 类型     | 必填 | 说明   |
-|-------------|------|--------|----|------|
-| name        | body | string | 是  | 名称   |
-| parentId    | body | string | 否  | 父级ID |
-| description | body | string | 否  | 描述   |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| name | body | string | 是 | 名称 |
+| parentId | body | string | 否 | 父级 ID |
+| description | body | string | 否 | 描述 |
+| leaderUserId | body | string \| null | 否 | 部门负责人（租户用户 ID） |
 
 #### 获取租户组织
 
@@ -74,193 +268,231 @@ GET `/api/tenant/org-list`
 
 POST `/api/tenant/org-remove`
 
-| 参数 | 位置   | 类型     | 必填 | 说明     |
-|----|------|--------|----|--------|
-| id | body | string | 是  | 组织节点ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 组织节点 ID |
 
 #### 编辑组织节点
 
 POST `/api/tenant/org-save`
 
-| 参数          | 位置   | 类型     | 必填 | 说明     |
-|-------------|------|--------|----|--------|
-| id          | body | string | 是  | 组织节点ID |
-| name        | body | string | 否  | 名称     |
-| description | body | string | 否  | 描述     |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 组织节点 ID |
+| name | body | string | 否 | 名称 |
+| description | body | string | 否 | 描述 |
+| leaderUserId | body | string \| null | 否 | 部门负责人（传 null 清空） |
+
+#### 批量导入组织与用户
+
+POST `/api/tenant/org-batch-import`
+
+需登录租户用户上下文，无需传 tenantId。
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| parentOrgId | body | string | 否 | 锚点组织节点 ID |
+| rows | body | array | 是 | 行对象列表，至少 1 条 |
+
+`rows[]` 每项字段：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| rowType | string | 是 | 枚举：org / user |
+| orgName | string \| null | 否 | 组织名称 |
+| parentOrgName | string \| null | 否 | 上级组织名称 |
+| userName | string \| null | 否 | 负责人姓名 |
+| email | string \| null | 否 | 邮箱 |
+| phone | string \| null | 否 | 手机 |
+| description | string \| null | 否 | 描述 |
+| isLeader | boolean \| null | 否 | 是否为部门负责人 |
+
+返回值：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| createdOrgs | number | 新建组织数 |
+| createdUsers | number | 新建租户用户数 |
+| rowCount | number | 有效导入行数 |
 
 ---
 
-### 租户用户管理 API
+### 租户用户管理 API（租户侧）
 
 #### 创建租户用户
 
 POST `/api/tenant/user-create`
 
-| 参数          | 位置   | 类型     | 必填 | 说明   |
-|-------------|------|--------|----|------|
-| name        | body | string | 是  | 姓名   |
-| tenantOrgId | body | string | 否  | 组织ID |
-| avatar      | body | string | 否  | 头像   |
-| email       | body | string | 否  | 邮箱   |
-| phone       | body | string | 否  | 手机号  |
-| description | body | string | 否  | 描述   |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| name | body | string | 是 | 姓名 |
+| tenantOrgId | body | string | 否 | 组织 ID（兼容） |
+| tenantOrgIds | body | array\<string\> | 否 | 所属组织 ID 列表 |
+| avatar | body | string | 否 | 头像 |
+| email | body | string | 否 | 邮箱 |
+| phone | body | string | 否 | 手机号 |
+| description | body | string | 否 | 描述 |
 
 #### 获取租户用户详情
 
 GET `/api/tenant/user-detail`
 
-| 参数 | 位置    | 类型     | 必填 | 说明   |
-|----|-------|--------|----|------|
-| id | query | string | 是  | 用户ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | query | string | 是 | 用户 ID |
 
 #### 编辑租户用户
 
 POST `/api/tenant/user-save`
 
-| 参数          | 位置   | 类型     | 必填 | 说明   |
-|-------------|------|--------|----|------|
-| id          | body | string | 是  | 用户ID |
-| name        | body | string | 是  | 姓名   |
-| tenantOrgId | body | string | 否  | 组织ID |
-| avatar      | body | string | 否  | 头像   |
-| email       | body | string | 否  | 邮箱   |
-| phone       | body | string | 否  | 手机号  |
-| description | body | string | 否  | 描述   |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 用户 ID |
+| name | body | string | 是 | 姓名 |
+| tenantOrgId | body | string | 否 | 组织 ID（兼容） |
+| tenantOrgIds | body | array\<string\> | 否 | 所属组织 ID 列表 |
+| avatar | body | string | 否 | 头像 |
+| email | body | string | 否 | 邮箱 |
+| phone | body | string | 否 | 手机号 |
+| description | body | string | 否 | 描述 |
 
 #### 删除租户用户
 
 POST `/api/tenant/user-remove`
 
-| 参数 | 位置   | 类型     | 必填 | 说明   |
-|----|------|--------|----|------|
-| id | body | string | 是  | 用户ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 用户 ID |
 
 #### 租户用户列表
 
 GET `/api/tenant/user-list`
 
-| 参数          | 位置    | 类型     | 必填 | 默认值 | 说明   |
-|-------------|-------|--------|----|-----|------|
-| filter      | query | object | 否  | -   | 过滤条件 |
-| perPage     | query | number | 否  | 20  | 每页数量 |
-| currentPage | query | number | 否  | 1   | 当前页码 |
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|------|--------|------|
+| filter | query | object | 否 | - | 过滤条件 |
+| perPage | query | number | 否 | 20 | 每页数量 |
+| currentPage | query | number | 否 | 1 | 当前页码 |
 
 #### 修改租户用户状态
 
 POST `/api/tenant/user-set-status`
 
-| 参数     | 位置   | 类型     | 必填 | 说明             |
-|--------|------|--------|----|----------------|
-| id     | body | string | 是  | 用户ID           |
-| status | body | string | 是  | 状态：open/closed |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 用户 ID |
+| status | body | string | 是 | 状态：open / closed |
 
 #### 获取用户邀请链接
 
 GET `/api/tenant/user-invite-token`
 
-| 参数 | 位置    | 类型     | 必填 | 说明   |
-|----|-------|--------|----|------|
-| id | query | string | 是  | 用户ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | query | string | 是 | 用户 ID |
 
 #### 发送邀请租户消息
 
 POST `/api/tenant/send-invite-message`
 
-| 参数 | 位置   | 类型     | 必填 | 说明   |
-|----|------|--------|----|------|
-| id | body | string | 是  | 用户ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 用户 ID |
 
 ---
 
-### 自定义组件 API
+### 自定义组件 API（租户侧）
 
 #### 自定义组件详情
 
 GET `/api/tenant/custom-component-detail`
 
-| 参数  | 位置    | 类型     | 必填 | 说明   |
-|-----|-------|--------|----|------|
-| key | query | string | 是  | 组件标识 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| key | query | string | 是 | 组件标识 |
 
 ---
 
-### 角色管理 API
+### 角色管理 API（租户侧）
 
 #### 创建租户角色
 
 POST `/api/tenant/role/create`
 
-| 参数                  | 位置   | 类型     | 必填 | 说明               |
-|---------------------|------|--------|----|------------------|
-| name                | body | string | 是  | 名称               |
-| code                | body | string | 是  | 编码               |
-| description         | body | string | 否  | 描述               |
-| status              | body | string | 否  | 状态：open/closed   |
-| type                | body | string | 否  | 类型：system/custom |
-| options             | body | object | 否  | 扩展配置             |
-| createdTenantUserId | body | string | 否  | 创建者ID            |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| name | body | string | 是 | 名称 |
+| code | body | string | 是 | 编码 |
+| description | body | string | 否 | 描述，默认空 |
+| status | body | string | 否 | 状态：open / closed，默认 open |
+| type | body | string | 否 | 类型：system / custom，默认 custom |
+| options | body | object | 否 | 扩展配置 |
+| createdTenantUserId | body | string | 否 | 创建者 ID |
 
 #### 租户角色列表
 
 GET `/api/tenant/role/list`
 
-| 参数          | 位置    | 类型     | 必填 | 默认值 | 说明   |
-|-------------|-------|--------|----|-----|------|
-| filter      | query | object | 否  | {}  | 过滤条件 |
-| perPage     | query | number | 否  | 20  | 每页数量 |
-| currentPage | query | number | 否  | 1   | 当前页码 |
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|------|--------|------|
+| filter | query | object | 否 | {} | 过滤条件 |
+| filter.keyword | query | string | 否 | - | 名称 / 编码 / 描述模糊搜索 |
+| filter.type | query | string | 否 | - | 角色类型：system / custom |
+| filter.status | query | string | 否 | - | 状态：open / closed |
+| perPage | query | number | 否 | 20 | 每页数量 |
+| currentPage | query | number | 否 | 1 | 当前页码 |
 
 #### 删除租户角色
 
 POST `/api/tenant/role/remove`
 
-| 参数 | 位置   | 类型     | 必填 | 说明   |
-|----|------|--------|----|------|
-| id | body | string | 是  | 角色ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 角色 ID |
 
 #### 修改租户角色状态
 
 POST `/api/tenant/role/set-status`
 
-| 参数     | 位置   | 类型     | 必填 | 说明             |
-|--------|------|--------|----|----------------|
-| id     | body | string | 是  | 角色ID           |
-| status | body | string | 是  | 状态：open/closed |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 角色 ID |
+| status | body | string | 是 | 状态：open / closed |
 
 #### 编辑租户角色
 
 POST `/api/tenant/role/save`
 
-| 参数          | 位置   | 类型     | 必填 | 说明   |
-|-------------|------|--------|----|------|
-| id          | body | string | 是  | 角色ID |
-| name        | body | string | 否  | 名称   |
-| code        | body | string | 否  | 编码   |
-| description | body | string | 否  | 描述   |
-| status      | body | string | 否  | 状态   |
-| type        | body | string | 否  | 类型   |
-| options     | body | object | 否  | 扩展配置 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 角色 ID |
+| name | body | string | 否 | 名称 |
+| code | body | string | 否 | 编码 |
+| description | body | string | 否 | 描述 |
+| status | body | string | 否 | 状态 |
+| type | body | string | 否 | 类型 |
+| options | body | object | 否 | 扩展配置 |
 
 #### 租户角色权限列表
 
 GET `/api/tenant/role/permission-list`
 
-| 参数 | 位置    | 类型     | 必填 | 说明   |
-|----|-------|--------|----|------|
-| id | query | string | 是  | 角色ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | query | string | 是 | 角色 ID |
 
 #### 保存租户角色权限
 
 POST `/api/tenant/role/save-permission`
 
-| 参数          | 位置   | 类型     | 必填 | 说明     |
-|-------------|------|--------|----|--------|
-| id          | body | string | 是  | 角色ID   |
-| permissions | body | array  | 是  | 权限编码列表 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 角色 ID |
+| permissions | body | array\<string\> | 是 | 权限编码列表 |
 
 ---
 
-### 权限 API
+### 权限 API（租户侧）
 
 #### 租户权限列表
 
@@ -270,77 +502,141 @@ GET `/api/tenant/permission/list`
 
 ---
 
+### 共享组 API（租户侧）
+
+#### 共享组列表
+
+GET `/api/tenant/shared_group/list`
+
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|------|--------|------|
+| filter | query | object | 否 | {} | 过滤条件 |
+| perPage | query | number | 否 | 20 | 每页数量 |
+| currentPage | query | number | 否 | 1 | 当前页码 |
+
+#### 创建共享组
+
+POST `/api/tenant/shared_group/create`
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| name | body | string | 是 | 共享组名称 |
+| description | body | string | 否 | 说明 |
+| sharedModules | body | array | 否 | 共享模块列表，默认 [] |
+| sharedModules[].moduleCode | body | string | 是 | 模块编码 |
+| sharedModules[].access | body | string | 是 | 访问权限：read / write |
+| dataSourceTenantUserIds | body | array\<string\> | 否 | 数据来源租户用户 ID 列表，默认 [] |
+| memberTenantUserIds | body | array\<string\> | 否 | 成员租户用户 ID 列表，默认 [] |
+| status | body | string | 否 | 状态：open / closed |
+| options | body | object | 否 | 扩展字段 |
+
+#### 编辑共享组
+
+POST `/api/tenant/shared_group/save`
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 共享组 ID |
+| name | body | string | 否 | 共享组名称 |
+| description | body | string | 否 | 说明 |
+| sharedModules | body | array | 否 | 共享模块列表 |
+| dataSourceTenantUserIds | body | array\<string\> | 否 | 数据来源租户用户 ID 列表 |
+| memberTenantUserIds | body | array\<string\> | 否 | 成员租户用户 ID 列表 |
+| status | body | string | 否 | 状态 |
+| options | body | object | 否 | 扩展字段 |
+
+#### 修改共享组状态
+
+POST `/api/tenant/shared_group/set-status`
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 共享组 ID |
+| status | body | string | 是 | 状态：open / closed |
+
+#### 删除共享组
+
+POST `/api/tenant/shared_group/remove`
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 共享组 ID |
+
+---
+
 ### 管理员 - 租户管理 API
+
+以下接口需用户认证 + 管理员认证，body 中须显式传 `tenantId`。
 
 #### 租户列表
 
 GET `/api/tenant/admin/list`
 
-| 参数          | 位置    | 类型     | 必填 | 默认值 | 说明   |
-|-------------|-------|--------|----|-----|------|
-| filter      | query | object | 否  | -   | 过滤条件 |
-| perPage     | query | number | 否  | 20  | 每页数量 |
-| currentPage | query | number | 否  | 1   | 当前页码 |
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|------|--------|------|
+| filter | query | object | 否 | - | 过滤条件 |
+| perPage | query | number | 否 | 20 | 每页数量 |
+| currentPage | query | number | 否 | 1 | 当前页码 |
 
 #### 租户详情
 
 GET `/api/tenant/admin/detail`
 
-| 参数 | 位置    | 类型     | 必填 | 说明   |
-|----|-------|--------|----|------|
-| id | query | string | 是  | 租户ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | query | string | 是 | 租户 ID |
 
 #### 添加租户
 
 POST `/api/tenant/admin/create`
 
-| 参数               | 位置   | 类型     | 必填 | 说明             |
-|------------------|------|--------|----|----------------|
-| name             | body | string | 是  | 租户名称           |
-| themeColor       | body | string | 是  | 主题色            |
-| logo             | body | string | 是  | Logo           |
-| serviceStartTime | body | string | 是  | 服务开始时间         |
-| serviceEndTime   | body | string | 是  | 服务结束时间         |
-| status           | body | string | 否  | 状态：open/closed |
-| accountCount     | body | number | 否  | 最大账号数量         |
-| description      | body | string | 否  | 描述             |
-| supportLanguage  | body | array  | 否  | 支持语言           |
-| defaultLanguage  | body | string | 否  | 默认语言           |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| name | body | string | 是 | 租户名称 |
+| themeColor | body | string | 是 | 主题色 |
+| logo | body | string | 是 | Logo |
+| serviceStartTime | body | string | 是 | 服务开始时间 |
+| serviceEndTime | body | string | 是 | 服务结束时间 |
+| status | body | string | 否 | 状态：open / closed |
+| accountCount | body | number | 否 | 最大账号数量 |
+| description | body | string | 否 | 描述 |
+| supportLanguage | body | array\<string\> | 否 | 支持语言 |
+| defaultLanguage | body | string | 否 | 默认语言 |
 
 #### 保存租户
 
 POST `/api/tenant/admin/save`
 
-| 参数               | 位置   | 类型     | 必填 | 说明     |
-|------------------|------|--------|----|--------|
-| id               | body | string | 是  | 租户ID   |
-| name             | body | string | 否  | 租户名称   |
-| themeColor       | body | string | 否  | 主题色    |
-| logo             | body | string | 否  | Logo   |
-| status           | body | string | 否  | 状态     |
-| accountCount     | body | number | 否  | 最大账号数量 |
-| description      | body | string | 否  | 描述     |
-| supportLanguage  | body | array  | 否  | 支持语言   |
-| defaultLanguage  | body | string | 否  | 默认语言   |
-| serviceStartTime | body | string | 否  | 服务开始时间 |
-| serviceEndTime   | body | string | 否  | 服务结束时间 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 租户 ID |
+| name | body | string | 否 | 租户名称 |
+| themeColor | body | string | 否 | 主题色 |
+| logo | body | string | 否 | Logo |
+| status | body | string | 否 | 状态 |
+| accountCount | body | number | 否 | 最大账号数量 |
+| description | body | string | 否 | 描述 |
+| supportLanguage | body | array\<string\> | 否 | 支持语言 |
+| defaultLanguage | body | string | 否 | 默认语言 |
+| serviceStartTime | body | string | 否 | 服务开始时间 |
+| serviceEndTime | body | string | 否 | 服务结束时间 |
 
 #### 设置租户状态
 
 POST `/api/tenant/admin/set-status`
 
-| 参数     | 位置   | 类型     | 必填 | 说明   |
-|--------|------|--------|----|------|
-| id     | body | string | 是  | 租户ID |
-| status | body | string | 是  | 状态   |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 租户 ID |
+| status | body | string | 是 | 状态 |
 
 #### 删除租户
 
 POST `/api/tenant/admin/remove`
 
-| 参数 | 位置   | 类型     | 必填 | 说明   |
-|----|------|--------|----|------|
-| id | body | string | 是  | 租户ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 租户 ID |
 
 ---
 
@@ -350,27 +646,27 @@ POST `/api/tenant/admin/remove`
 
 POST `/api/tenant/admin/append-args`
 
-| 参数       | 位置   | 类型     | 必填 | 说明     |
-|----------|------|--------|----|--------|
-| tenantId | body | string | 是  | 租户ID   |
-| args     | body | array  | 是  | 环境变量列表 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| args | body | array | 是 | 环境变量列表，至少 1 条 |
 
-args 数组项结构：
+`args[]` 每项字段：
 
-| 参数     | 类型      | 必填 | 说明             |
-|--------|---------|----|----------------|
-| key    | string  | 是  | 变量名            |
-| value  | string  | 是  | 变量值            |
-| secret | boolean | 否  | 是否为密钥，默认 false |
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| key | string | 是 | 变量名 |
+| value | string | 是 | 变量值 |
+| secret | boolean | 否 | 是否为密钥，默认 false |
 
 #### 删除环境变量
 
 POST `/api/tenant/admin/remove-arg`
 
-| 参数       | 位置   | 类型     | 必填 | 说明   |
-|----------|------|--------|----|------|
-| tenantId | body | string | 是  | 租户ID |
-| key      | body | string | 是  | 变量名  |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| key | body | string | 是 | 变量名 |
 
 ---
 
@@ -380,56 +676,56 @@ POST `/api/tenant/admin/remove-arg`
 
 POST `/api/tenant/admin/append-custom-component`
 
-| 参数              | 位置   | 类型     | 必填 | 说明    |
-|-----------------|------|--------|----|-------|
-| tenantId        | body | string | 是  | 租户ID  |
-| customComponent | body | object | 是  | 自定义组件 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| customComponent | body | object | 是 | 自定义组件 |
 
-customComponent 结构：
+`customComponent` 结构：
 
-| 参数          | 类型     | 必填 | 说明   |
-|-------------|--------|----|------|
-| key         | string | 是  | 组件标识 |
-| name        | string | 是  | 组件名称 |
-| type        | string | 是  | 组件类型 |
-| content     | string | 是  | 组件内容 |
-| description | string | 否  | 组件描述 |
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| key | string | 是 | 组件标识 |
+| name | string | 是 | 组件名称 |
+| type | string | 是 | 组件类型 |
+| content | string | 是 | 组件内容 |
+| description | string | 否 | 组件描述 |
 
 #### 自定义组件详情
 
 GET `/api/tenant/admin/custom-component-detail`
 
-| 参数       | 位置    | 类型     | 必填 | 说明   |
-|----------|-------|--------|----|------|
-| tenantId | query | string | 是  | 租户ID |
-| key      | query | string | 是  | 组件标识 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | query | string | 是 | 租户 ID |
+| key | query | string | 是 | 组件标识 |
 
 #### 删除自定义组件
 
 POST `/api/tenant/admin/remove-custom-component`
 
-| 参数       | 位置   | 类型     | 必填 | 说明   |
-|----------|------|--------|----|------|
-| tenantId | body | string | 是  | 租户ID |
-| key      | body | string | 是  | 组件标识 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| key | body | string | 是 | 组件标识 |
 
 #### 保存自定义组件
 
 POST `/api/tenant/admin/save-custom-component`
 
-| 参数              | 位置   | 类型     | 必填 | 说明    |
-|-----------------|------|--------|----|-------|
-| tenantId        | body | string | 是  | 租户ID  |
-| customComponent | body | object | 是  | 自定义组件 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| customComponent | body | object | 是 | 自定义组件（结构同上） |
 
 #### 复制自定义组件
 
 POST `/api/tenant/admin/copy-custom-component`
 
-| 参数       | 位置   | 类型     | 必填 | 说明   |
-|----------|------|--------|----|------|
-| tenantId | body | string | 是  | 租户ID |
-| key      | body | string | 是  | 组件标识 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| key | body | string | 是 | 组件标识 |
 
 ---
 
@@ -439,18 +735,34 @@ POST `/api/tenant/admin/copy-custom-component`
 
 GET `/api/tenant/admin/company-detail`
 
-| 参数       | 位置    | 类型     | 必填 | 说明   |
-|----------|-------|--------|----|------|
-| tenantId | query | string | 是  | 租户ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | query | string | 是 | 租户 ID |
 
 #### 保存公司信息
 
 POST `/api/tenant/admin/company-save`
 
-| 参数       | 位置   | 类型     | 必填 | 说明     |
-|----------|------|--------|----|--------|
-| tenantId | body | string | 是  | 租户ID   |
-| -        | body | object | -  | 公司信息对象 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| name | body | string | 否 | 公司名称 |
+| fullName | body | string | 否 | 公司全称 |
+| logo | body | string | 否 | Logo |
+| industry | body | string | 否 | 行业 |
+| scale | body | string | 否 | 规模 |
+| address | body | string | 否 | 地址 |
+| phone | body | string | 否 | 电话 |
+| email | body | string | 否 | 邮箱 |
+| foundedDate | body | string | 否 | 成立日期 |
+| companyTags | body | array\<object\> | 否 | 公司标签 |
+| website | body | string | 否 | 主页 |
+| description | body | string | 否 | 描述 |
+| banners | body | array\<object\> | 否 | Banner 图片列表 |
+| teamDescription | body | object | 否 | 团队介绍 |
+| developmentHistory | body | object | 否 | 发展历程 |
+| contact | body | object | 否 | 联系方式 |
+| options | body | object | 否 | 扩展字段 |
 
 ---
 
@@ -460,40 +772,56 @@ POST `/api/tenant/admin/company-save`
 
 POST `/api/tenant/admin/org-create`
 
-| 参数          | 位置   | 类型     | 必填 | 说明   |
-|-------------|------|--------|----|------|
-| tenantId    | body | string | 是  | 租户ID |
-| name        | body | string | 是  | 名称   |
-| parentId    | body | string | 否  | 父级ID |
-| description | body | string | 否  | 描述   |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| name | body | string | 是 | 名称 |
+| parentId | body | string | 否 | 父级 ID |
+| description | body | string | 否 | 描述 |
+| leaderUserId | body | string \| null | 否 | 部门负责人（租户用户 ID） |
 
 #### 获取租户组织
 
 GET `/api/tenant/admin/org-list`
 
-| 参数       | 位置    | 类型     | 必填 | 说明   |
-|----------|-------|--------|----|------|
-| tenantId | query | string | 是  | 租户ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | query | string | 是 | 租户 ID |
 
 #### 删除组织节点
 
 POST `/api/tenant/admin/org-remove`
 
-| 参数       | 位置   | 类型     | 必填 | 说明     |
-|----------|------|--------|----|--------|
-| tenantId | body | string | 是  | 租户ID   |
-| id       | body | string | 是  | 组织节点ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| id | body | string | 是 | 组织节点 ID |
 
 #### 编辑组织节点
 
 POST `/api/tenant/admin/org-save`
 
-| 参数          | 位置   | 类型     | 必填 | 说明     |
-|-------------|------|--------|----|--------|
-| tenantId    | body | string | 是  | 租户ID   |
-| id          | body | string | 是  | 组织节点ID |
-| name        | body | string | 否  | 名称     |
-| description | body | string | 否  | 描述     |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| id | body | string | 是 | 组织节点 ID |
+| name | body | string | 否 | 名称 |
+| description | body | string | 否 | 描述 |
+| leaderUserId | body | string \| null | 否 | 部门负责人（传 null 清空） |
+
+#### 批量导入组织与用户
+
+POST `/api/tenant/admin/org-batch-import`
+
+body 须含 tenantId。
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| parentOrgId | body | string | 否 | 锚点组织节点 ID |
+| rows | body | array | 是 | 行对象列表，字段同租户侧批量导入 |
+
+返回值同租户侧批量导入。
 
 ---
 
@@ -503,98 +831,100 @@ POST `/api/tenant/admin/org-save`
 
 POST `/api/tenant/admin/user-create`
 
-| 参数          | 位置   | 类型     | 必填 | 说明   |
-|-------------|------|--------|----|------|
-| tenantId    | body | string | 是  | 租户ID |
-| name        | body | string | 是  | 姓名   |
-| tenantOrgId | body | string | 否  | 组织ID |
-| roles       | body | array  | 否  | 角色列表 |
-| avatar      | body | string | 否  | 头像   |
-| email       | body | string | 否  | 邮箱   |
-| phone       | body | string | 否  | 手机号  |
-| description | body | string | 否  | 描述   |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| name | body | string | 是 | 姓名 |
+| tenantOrgId | body | string \| null | 否 | 组织 ID（兼容），默认 null |
+| tenantOrgIds | body | array\<string\> | 否 | 所属组织 ID 列表，默认 [] |
+| roles | body | array\<string\> | 否 | 角色 ID 列表，默认 [] |
+| avatar | body | string | 否 | 头像，默认空 |
+| email | body | string \| null | 否 | 邮箱，默认 null |
+| phone | body | string | 否 | 手机号，默认空 |
+| description | body | string | 否 | 描述，默认空 |
 
 #### 编辑租户用户
 
 POST `/api/tenant/admin/user-save`
 
-| 参数          | 位置   | 类型     | 必填 | 说明   |
-|-------------|------|--------|----|------|
-| id          | body | string | 是  | 用户ID |
-| tenantId    | body | string | 是  | 租户ID |
-| name        | body | string | 是  | 姓名   |
-| tenantOrgId | body | string | 否  | 组织ID |
-| roles       | body | array  | 否  | 角色列表 |
-| avatar      | body | string | 否  | 头像   |
-| email       | body | string | 否  | 邮箱   |
-| phone       | body | string | 否  | 手机号  |
-| description | body | string | 否  | 描述   |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 用户 ID |
+| tenantId | body | string | 是 | 租户 ID |
+| name | body | string | 是 | 姓名 |
+| tenantOrgId | body | string \| null | 否 | 组织 ID（兼容） |
+| tenantOrgIds | body | array\<string\> | 否 | 所属组织 ID 列表 |
+| roles | body | array\<string\> | 否 | 角色 ID 列表 |
+| avatar | body | string | 否 | 头像 |
+| email | body | string \| null | 否 | 邮箱 |
+| phone | body | string | 否 | 手机号 |
+| description | body | string | 否 | 描述 |
 
 #### 删除租户用户
 
 POST `/api/tenant/admin/user-remove`
 
-| 参数       | 位置   | 类型     | 必填 | 说明   |
-|----------|------|--------|----|------|
-| id       | body | string | 是  | 用户ID |
-| tenantId | body | string | 是  | 租户ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 用户 ID |
+| tenantId | body | string | 是 | 租户 ID |
 
 #### 租户用户列表
 
 GET `/api/tenant/admin/user-list`
 
-| 参数          | 位置    | 类型     | 必填 | 默认值 | 说明   |
-|-------------|-------|--------|----|-----|------|
-| tenantId    | query | string | 是  | -   | 租户ID |
-| filter      | query | object | 否  | -   | 过滤条件 |
-| perPage     | query | number | 否  | 20  | 每页数量 |
-| currentPage | query | number | 否  | 1   | 当前页码 |
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|------|--------|------|
+| tenantId | query | string | 是 | - | 租户 ID |
+| filter | query | object | 否 | - | 过滤条件 |
+| perPage | query | number | 否 | 20 | 每页数量 |
+| currentPage | query | number | 否 | 1 | 当前页码 |
 
 #### 获取租户用户详情
 
 GET `/api/tenant/admin/user-detail`
 
-| 参数       | 位置    | 类型     | 必填 | 说明   |
-|----------|-------|--------|----|------|
-| id       | query | string | 是  | 用户ID |
-| tenantId | query | string | 是  | 租户ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | query | string | 是 | 用户 ID |
+| tenantId | query | string | 是 | 租户 ID |
 
 #### 修改租户用户状态
 
 POST `/api/tenant/admin/user-set-status`
 
-| 参数       | 位置   | 类型     | 必填 | 说明             |
-|----------|------|--------|----|----------------|
-| tenantId | body | string | 是  | 租户ID           |
-| id       | body | string | 是  | 用户ID           |
-| status   | body | string | 是  | 状态：open/closed |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| id | body | string | 是 | 用户 ID |
+| status | body | string | 是 | 状态：open / closed |
 
 #### 查看租户用户权限列表
 
 GET `/api/tenant/admin/user-permission-list`
 
-| 参数       | 位置    | 类型     | 必填 | 说明   |
-|----------|-------|--------|----|------|
-| tenantId | query | string | 是  | 租户ID |
-| id       | query | string | 是  | 用户ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | query | string | 是 | 租户 ID |
+| id | query | string | 是 | 用户 ID |
 
 #### 获取用户邀请链接
 
 GET `/api/tenant/admin/user-invite-token`
 
-| 参数       | 位置    | 类型     | 必填 | 说明   |
-|----------|-------|--------|----|------|
-| tenantId | query | string | 是  | 租户ID |
-| id       | query | string | 是  | 用户ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | query | string | 是 | 租户 ID |
+| id | query | string | 是 | 用户 ID |
 
 #### 发送邀请租户消息
 
 POST `/api/tenant/admin/send-invite-message`
 
-| 参数       | 位置   | 类型     | 必填 | 说明   |
-|----------|------|--------|----|------|
-| tenantId | body | string | 是  | 租户ID |
-| id       | body | string | 是  | 用户ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| id | body | string | 是 | 用户 ID |
 
 ---
 
@@ -604,80 +934,83 @@ POST `/api/tenant/admin/send-invite-message`
 
 POST `/api/tenant/admin/role/create`
 
-| 参数                  | 位置   | 类型     | 必填 | 说明               |
-|---------------------|------|--------|----|------------------|
-| tenantId            | body | string | 是  | 租户ID             |
-| name                | body | string | 是  | 名称               |
-| code                | body | string | 是  | 编码               |
-| description         | body | string | 否  | 描述               |
-| status              | body | string | 否  | 状态：open/closed   |
-| type                | body | string | 否  | 类型：system/custom |
-| options             | body | object | 否  | 扩展配置             |
-| createdTenantUserId | body | string | 否  | 创建者ID            |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| name | body | string | 是 | 名称 |
+| code | body | string | 是 | 编码 |
+| description | body | string | 否 | 描述，默认空 |
+| status | body | string | 否 | 状态：open / closed，默认 open |
+| type | body | string | 否 | 类型：system / custom，默认 custom |
+| options | body | object | 否 | 扩展配置 |
+| createdTenantUserId | body | string | 否 | 创建者 ID |
 
 #### 租户角色列表
 
 GET `/api/tenant/admin/role/list`
 
-| 参数          | 位置    | 类型     | 必填 | 默认值 | 说明   |
-|-------------|-------|--------|----|-----|------|
-| tenantId    | query | string | 是  | -   | 租户ID |
-| filter      | query | object | 否  | {}  | 过滤条件 |
-| perPage     | query | number | 否  | 20  | 每页数量 |
-| currentPage | query | number | 否  | 1   | 当前页码 |
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|------|--------|------|
+| tenantId | query | string | 是 | - | 租户 ID |
+| filter | query | object | 否 | {} | 过滤条件 |
+| filter.keyword | query | string | 否 | - | 名称 / 编码 / 描述模糊搜索 |
+| filter.type | query | string | 否 | - | 角色类型：system / custom |
+| filter.status | query | string | 否 | - | 状态：open / closed |
+| perPage | query | number | 否 | 20 | 每页数量 |
+| currentPage | query | number | 否 | 1 | 当前页码 |
 
 #### 删除租户角色
 
 POST `/api/tenant/admin/role/remove`
 
-| 参数       | 位置   | 类型     | 必填 | 说明   |
-|----------|------|--------|----|------|
-| tenantId | body | string | 是  | 租户ID |
-| id       | body | string | 是  | 角色ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| id | body | string | 是 | 角色 ID |
 
 #### 修改租户角色状态
 
 POST `/api/tenant/admin/role/set-status`
 
-| 参数       | 位置   | 类型     | 必填 | 说明             |
-|----------|------|--------|----|----------------|
-| tenantId | body | string | 是  | 租户ID           |
-| id       | body | string | 是  | 角色ID           |
-| status   | body | string | 是  | 状态：open/closed |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| id | body | string | 是 | 角色 ID |
+| status | body | string | 是 | 状态：open / closed |
 
 #### 编辑租户角色
 
 POST `/api/tenant/admin/role/save`
 
-| 参数          | 位置   | 类型     | 必填 | 说明   |
-|-------------|------|--------|----|------|
-| id          | body | string | 是  | 角色ID |
-| tenantId    | body | string | 是  | 租户ID |
-| name        | body | string | 否  | 名称   |
-| code        | body | string | 否  | 编码   |
-| description | body | string | 否  | 描述   |
-| status      | body | string | 否  | 状态   |
-| type        | body | string | 否  | 类型   |
-| options     | body | object | 否  | 扩展配置 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| id | body | string | 是 | 角色 ID |
+| tenantId | body | string | 是 | 租户 ID |
+| name | body | string | 否 | 名称 |
+| code | body | string | 否 | 编码 |
+| description | body | string | 否 | 描述 |
+| status | body | string | 否 | 状态 |
+| type | body | string | 否 | 类型 |
+| options | body | object | 否 | 扩展配置 |
 
 #### 租户角色权限列表
 
 GET `/api/tenant/admin/role/permission-list`
 
-| 参数       | 位置    | 类型     | 必填 | 说明   |
-|----------|-------|--------|----|------|
-| tenantId | query | string | 是  | 租户ID |
-| id       | query | string | 是  | 角色ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | query | string | 是 | 租户 ID |
+| id | query | string | 是 | 角色 ID |
 
 #### 保存租户角色权限
 
 POST `/api/tenant/admin/role/save-permission`
 
-| 参数          | 位置   | 类型     | 必填 | 说明     |
-|-------------|------|--------|----|--------|
-| tenantId    | body | string | 是  | 租户ID   |
-| id          | body | string | 是  | 角色ID   |
-| permissions | body | array  | 是  | 权限编码列表 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| id | body | string | 是 | 角色 ID |
+| permissions | body | array\<string\> | 是 | 权限编码列表 |
 
 ---
 
@@ -687,15 +1020,104 @@ POST `/api/tenant/admin/role/save-permission`
 
 GET `/api/tenant/admin/permission/list`
 
-| 参数       | 位置    | 类型     | 必填 | 说明   |
-|----------|-------|--------|----|------|
-| tenantId | query | string | 是  | 租户ID |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | query | string | 是 | 租户 ID |
 
 #### 保存租户权限
 
 POST `/api/tenant/admin/permission/save`
 
-| 参数          | 位置   | 类型     | 必填 | 说明     |
-|-------------|------|--------|----|--------|
-| tenantId    | body | string | 是  | 租户ID   |
-| permissions | body | array  | 是  | 权限编码列表 |
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| permissions | body | array\<string\> | 是 | 权限编码列表 |
+
+---
+
+### 管理员 - 共享组 API
+
+#### 租户共享组列表
+
+GET `/api/tenant/admin/shared_group/list`
+
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|------|--------|------|
+| tenantId | query | string | 是 | - | 租户 ID |
+| filter | query | object | 否 | {} | 过滤条件 |
+| perPage | query | number | 否 | 20 | 每页数量 |
+| currentPage | query | number | 否 | 1 | 当前页码 |
+
+#### 创建租户共享组
+
+POST `/api/tenant/admin/shared_group/create`
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| name | body | string | 是 | 共享组名称 |
+| description | body | string | 否 | 说明 |
+| sharedModules | body | array | 否 | 共享模块列表 |
+| sharedModules[].moduleCode | body | string | 是 | 模块编码 |
+| sharedModules[].access | body | string | 是 | 访问权限：read / write |
+| dataSourceTenantUserIds | body | array\<string\> | 否 | 数据来源租户用户 ID 列表 |
+| memberTenantUserIds | body | array\<string\> | 否 | 成员租户用户 ID 列表 |
+| status | body | string | 否 | 状态 |
+| options | body | object | 否 | 扩展字段 |
+
+#### 编辑租户共享组
+
+POST `/api/tenant/admin/shared_group/save`
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| id | body | string | 是 | 共享组 ID |
+| name | body | string | 否 | 共享组名称 |
+| description | body | string | 否 | 说明 |
+| sharedModules | body | array | 否 | 共享模块列表 |
+| dataSourceTenantUserIds | body | array\<string\> | 否 | 数据来源租户用户 ID 列表 |
+| memberTenantUserIds | body | array\<string\> | 否 | 成员租户用户 ID 列表 |
+| status | body | string | 否 | 状态 |
+| options | body | object | 否 | 扩展字段 |
+
+#### 修改租户共享组状态
+
+POST `/api/tenant/admin/shared_group/set-status`
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| id | body | string | 是 | 共享组 ID |
+| status | body | string | 是 | 状态：open / closed |
+
+#### 删除租户共享组
+
+POST `/api/tenant/admin/shared_group/remove`
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| id | body | string | 是 | 共享组 ID |
+
+---
+
+### 错误响应
+
+业务错误使用统一格式返回：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| code | string | 错误码，如 `USER_EMAIL_DUPLICATE` |
+| message | string | 错误描述 |
+
+常见错误码：
+
+| 错误码 | HTTP 状态 | 说明 |
+|--------|-----------|------|
+| USER_EMAIL_DUPLICATE | 400 | 邮箱在租户内已存在 |
+| USER_PHONE_DUPLICATE | 400 | 手机号在租户内已存在 |
+| USER_CONTACT_REQUIRED | 400 | 手机号或邮箱不能同时为空 |
+| ROLE_NOT_FOUND | 404 | 角色不存在 |
+| ROLE_SYSTEM_IMMUTABLE | 400 | 系统角色不可修改 / 删除 |
+| ROLE_IN_USE | 400 | 角色已被用户关联，不能删除 |

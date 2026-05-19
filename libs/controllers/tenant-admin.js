@@ -412,7 +412,24 @@ module.exports = fp(async (fastify, options) => {
           properties: {
             tenantId: {
               type: 'string'
-            }
+            },
+            name: { type: 'string' },
+            fullName: { type: 'string' },
+            logo: { type: 'string' },
+            industry: { type: 'string' },
+            scale: { type: 'string' },
+            address: { type: 'string' },
+            phone: { type: 'string' },
+            email: { type: 'string' },
+            foundedDate: { type: 'string' },
+            companyTags: { type: 'array', items: { type: 'object' } },
+            website: { type: 'string' },
+            description: { type: 'string' },
+            banners: { type: 'array', items: { type: 'object' } },
+            teamDescription: { type: 'object' },
+            developmentHistory: { type: 'object' },
+            contact: { type: 'object' },
+            options: { type: 'object' }
           },
           required: ['tenantId']
         }
@@ -443,6 +460,11 @@ module.exports = fp(async (fastify, options) => {
             },
             description: {
               type: 'string'
+            },
+            leaderUserId: {
+              type: ['string', 'null'],
+              default: null,
+              description: '部门负责人（租户用户 ID），不传或 null 表示无负责人'
             }
           },
           required: ['tenantId', 'name']
@@ -522,6 +544,11 @@ module.exports = fp(async (fastify, options) => {
             },
             description: {
               type: 'string'
+            },
+            leaderUserId: {
+              type: ['string', 'null'],
+              default: null,
+              description: '部门负责人（租户用户 ID），传 null 清空'
             }
           },
           required: ['id', 'tenantId']
@@ -531,6 +558,50 @@ module.exports = fp(async (fastify, options) => {
     async request => {
       await services.org.save(request.body);
       return {};
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/admin/org-batch-import`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '批量导入组织与用户（JSON，由前端解析 Excel 后提交）',
+        body: {
+          type: 'object',
+          properties: {
+            tenantId: { type: 'string' },
+            parentOrgId: { type: 'string' },
+            rows: {
+              type: 'array',
+              minItems: 1,
+              items: {
+                type: 'object',
+                properties: {
+                  rowType: { type: 'string', enum: ['org', 'user'] },
+                  orgName: { type: ['string', 'null'] },
+                  parentOrgName: { type: ['string', 'null'] },
+                  userName: { type: ['string', 'null'] },
+                  email: { type: ['string', 'null'] },
+                  phone: { type: ['string', 'null'] },
+                  description: { type: ['string', 'null'] },
+                  isLeader: { type: ['boolean', 'null'] }
+                },
+                required: ['rowType']
+              }
+            }
+          },
+          required: ['tenantId', 'rows']
+        }
+      }
+    },
+    async request => {
+      const { tenantId, parentOrgId, rows } = request.body;
+      return services.org.importFromRows({
+        tenantId,
+        parentOrgId: parentOrgId ? String(parentOrgId).trim() : null,
+        rows
+      });
     }
   );
 

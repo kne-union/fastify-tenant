@@ -35,6 +35,11 @@ module.exports = ({ DataTypes, options }) => {
         comment: '角色',
         defaultValue: []
       },
+      tenantOrgIds: {
+        type: DataTypes.JSONB,
+        comment: '所属组织（可多选）',
+        defaultValue: []
+      },
       options: {
         type: DataTypes.JSONB,
         comment: '扩展字段'

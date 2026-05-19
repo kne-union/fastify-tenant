@@ -12,7 +12,14 @@ module.exports = {
     },
     tenantOrgId: {
       type: ['string', 'null'],
-      default: null
+      default: null,
+      description: '主组织（兼容），通常取 tenantOrgIds 第一项'
+    },
+    tenantOrgIds: {
+      type: 'array',
+      items: { type: 'string' },
+      default: [],
+      description: '所属组织 id 列表，可多选'
     },
     roles: {
       type: 'array',
