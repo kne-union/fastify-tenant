@@ -5,6 +5,7 @@ const { orgLevelKey, collectOrgIdsByName } = require('../utils/orgLevel');
 const { buildOrgSubtreeUserCounts } = require('../utils/orgUserCount');
 const { buildUserOrgMembershipWhere, userBelongsToOrg, pickOrgIdsFromInput } = require('../utils/tenantOrgIds');
 const { normalizeLeaderUserId } = require('../utils/normalizeLeaderUserId');
+const { withTransaction } = require('../utils/withTransaction');
 
 module.exports = fp(async (fastify, options) => {
   const { models, services } = fastify[options.name];
@@ -35,28 +36,36 @@ module.exports = fp(async (fastify, options) => {
       return;
     }
     if (autoEnroll) {
-      const { tenantOrgIds, tenantOrgId: primaryOrgId } = pickOrgIdsFromInput({
-        tenantOrgId: u.tenantOrgId,
-        tenantOrgIds: [...(Array.isArray(u.tenantOrgIds) ? u.tenantOrgIds : []), orgIdStr]
-      });
-      await u.update({ tenantOrgIds, tenantOrgId: primaryOrgId }, { transaction });
+      const newOrgIds = [...(Array.isArray(u.tenantOrgIds) ? u.tenantOrgIds : []), orgIdStr];
+      const tenantOrgIds = pickOrgIdsFromInput({ tenantOrgIds: newOrgIds });
+      await u.update({ tenantOrgIds }, { transaction });
       return;
     }
     throw new Error('负责人必须是当前部门的成员');
   };
 
-  const list = async ({ tenantId }) => {
+  const list = async ({ tenantId, status }) => {
+    const where = { tenantId };
+    if (status !== undefined) {
+      where.status = status;
+    } else {
+      where.status = 'open';
+    }
     const orgs = await models.org.findAll({
-      where: {
-        tenantId
-      },
+      where,
       include: [leaderInclude],
       order: [['createdAt', 'ASC']]
     });
     const orgRows = orgs.map(o => ({ id: o.id, parentId: o.parentId }));
+    const userWhere = { tenantId };
+    if (status !== undefined) {
+      userWhere.status = status;
+    } else {
+      userWhere.status = 'open';
+    }
     const users = await models.user.findAll({
-      where: { tenantId },
-      attributes: ['tenantOrgId', 'tenantOrgIds'],
+      where: userWhere,
+      attributes: ['tenantOrgIds'],
       raw: true
     });
     const userCountMap = buildOrgSubtreeUserCounts(orgRows, users);
@@ -102,7 +111,7 @@ module.exports = fp(async (fastify, options) => {
       return batchIds[0];
     }
     const dbParents = await models.org.findAll({
-      where: { tenantId, name: parentOrgName },
+      where: { tenantId, name: parentOrgName, status: 'open' },
       transaction
     });
     if (dbParents.length === 0) {
@@ -166,7 +175,7 @@ module.exports = fp(async (fastify, options) => {
     const patch = { ...data };
     if (Object.prototype.hasOwnProperty.call(data, 'leaderUserId')) {
       patch.leaderUserId = normalizeLeaderUserId(data.leaderUserId);
-      await assertLeaderUser({ tenantId, leaderUserId: patch.leaderUserId, orgId: id });
+      await assertLeaderUser({ tenantId, leaderUserId: patch.leaderUserId, orgId: id, autoEnroll: true });
     }
     const nextName = Object.prototype.hasOwnProperty.call(patch, 'name') ? patch.name : org.name;
     const nextParentId = Object.prototype.hasOwnProperty.call(patch, 'parentId') ? patch.parentId : org.parentId;
@@ -185,6 +194,7 @@ module.exports = fp(async (fastify, options) => {
     const { tenantId } = authenticatePayload;
     const whereQuery = {
       tenantId,
+      status: 'open',
       [Op.or]: [{ id: { [Op.in]: ids || [] } }, { name: { [Op.in]: names || [] } }]
     };
     const positions = await models.org.findAll({
@@ -202,7 +212,7 @@ module.exports = fp(async (fastify, options) => {
   const resolveOrgIdByName = async ({ tenantId, orgName, orgPathToId, transaction }) => {
     const ids = new Set(collectOrgIdsByName(orgPathToId, orgName));
     const dbOrgs = await models.org.findAll({
-      where: { tenantId, name: orgName },
+      where: { tenantId, name: orgName, status: 'open' },
       transaction
     });
     dbOrgs.forEach(o => {
@@ -255,7 +265,6 @@ module.exports = fp(async (fastify, options) => {
       name: row.userName,
       email: row.email || undefined,
       phone: row.phone || undefined,
-      tenantOrgId: orgId,
       tenantOrgIds: [orgId],
       roles: [],
       description: row.description || null,
@@ -314,7 +323,16 @@ module.exports = fp(async (fastify, options) => {
           throw new Error(`第 ${row.sourceIndex} 条：${e.message}`);
         }
 
-        const orgRow = await models.org.create({ tenantId, parentId, name: orgName, description: row.description, leaderUserId: null }, { transaction: t });
+        const orgRow = await models.org.create(
+          {
+            tenantId,
+            parentId,
+            name: orgName,
+            description: row.description,
+            leaderUserId: null
+          },
+          { transaction: t }
+        );
         orgPathToId.set(levelKey, orgRow.id);
         createdOrgs++;
       }
@@ -360,7 +378,159 @@ module.exports = fp(async (fastify, options) => {
     };
   };
 
+  const syncOrg = async ({ tenantId, syncSource, orgs, users }, outerTransaction) => {
+    return withTransaction(
+      fastify,
+      async transaction => {
+        const trans = outerTransaction || transaction;
+        const sourceIdToLocalId = new Map();
+        let syncedOrgs = 0;
+        let syncedUsers = 0;
+
+        // 收集本次同步数据中的 sourceId
+        const incomingOrgSourceIds = new Set(orgs.map(o => o.sourceId));
+        const incomingUserSourceIds = new Set(users.map(u => u.sourceId));
+
+        // 1. 处理组织：按层级顺序创建/更新
+        for (const orgData of orgs) {
+          const { sourceId, parentSourceId, name, description, ...rest } = orgData;
+          // 查找本地parentId
+          let parentId = null;
+          if (parentSourceId) {
+            parentId = sourceIdToLocalId.get(parentSourceId) || null;
+          }
+
+          // 查找是否已存在同源同sourceId的组织
+          let org = await models.org.findOne({
+            where: { tenantId, syncSource, sourceId },
+            transaction: trans
+          });
+
+          if (org) {
+            // 更新
+            await org.update(
+              {
+                name,
+                description,
+                parentId,
+                status: 'open',
+                ...rest
+              },
+              { transaction: trans }
+            );
+          } else {
+            // 创建
+            org = await models.org.create(
+              {
+                tenantId,
+                parentId,
+                name,
+                description,
+                status: 'open',
+                synced: true,
+                syncSource,
+                sourceId,
+                ...rest
+              },
+              { transaction: trans }
+            );
+          }
+
+          sourceIdToLocalId.set(sourceId, org.id);
+          syncedOrgs++;
+        }
+
+        // 2. 关闭不在本次同步数据中的组织
+        await models.org.update(
+          { status: 'closed' },
+          {
+            where: {
+              tenantId,
+              syncSource,
+              sourceId: { [Op.notIn]: [...incomingOrgSourceIds] },
+              status: 'open'
+            },
+            transaction: trans
+          }
+        );
+
+        // 3. 处理用户
+        for (const userData of users) {
+          try {
+            const { sourceId, orgSourceId, name, email, phone, ...rest } = userData;
+            // 查找对应的组织
+            const orgId = orgSourceId ? sourceIdToLocalId.get(orgSourceId) || null : null;
+
+            // 查找是否已存在同源同sourceId的用户
+            let tenantUser = await models.user.findOne({
+              where: { tenantId, syncSource, sourceId },
+              transaction: trans
+            });
+
+            if (tenantUser) {
+              // 更新
+              const updateData = { name, status: 'open', ...rest };
+              if (orgId) {
+                const existingOrgIds = Array.isArray(tenantUser.tenantOrgIds) ? tenantUser.tenantOrgIds : [];
+                if (!existingOrgIds.includes(orgId)) {
+                  existingOrgIds.push(orgId);
+                }
+                updateData.tenantOrgIds = existingOrgIds;
+              }
+              await tenantUser.update(updateData, { transaction: trans });
+            } else {
+              // 创建
+              const tenantOrgIds = orgId ? [orgId] : [];
+              tenantUser = await services.user.create({
+                tenantId,
+                name,
+                email: email || undefined,
+                phone: phone || undefined,
+                tenantOrgIds,
+                synced: true,
+                syncSource,
+                sourceId,
+                transaction: trans,
+                ...rest
+              });
+            }
+
+            syncedUsers++;
+          } catch (e) {
+            fastify.log.error(`同步用户失败: ${JSON.stringify(userData)}, 错误: ${e.message}`);
+          }
+        }
+
+        // 4. 关闭不在本次同步数据中的用户
+        await models.user.update(
+          { status: 'closed' },
+          {
+            where: {
+              tenantId,
+              syncSource,
+              sourceId: { [Op.notIn]: [...incomingUserSourceIds] },
+              status: 'open'
+            },
+            transaction: trans
+          }
+        );
+
+        // 5. 更新同步记录
+        await models.orgSync.update(
+          { status: 'success', lastSyncAt: new Date() },
+          {
+            where: { tenantId, type: syncSource },
+            transaction: trans
+          }
+        );
+
+        return { syncedOrgs, syncedUsers };
+      },
+      outerTransaction
+    );
+  };
+
   Object.assign(fastify[options.name].services, {
-    org: { list, detail, create, remove, save, enums, importFromRows }
+    org: { list, detail, create, remove, save, enums, importFromRows, syncOrg }
   });
 });

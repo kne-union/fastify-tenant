@@ -18,7 +18,7 @@ module.exports = fp(async (fastify, options) => {
     }
   };
 
-  const create = async ({ tenantId, avatar, name, email, phone: phoneRaw, description, tenantOrgId, tenantOrgIds: tenantOrgIdsInput, roles, options, transaction }) => {
+  const create = async ({ tenantId, avatar, name, email, phone: phoneRaw, description, tenantOrgIds: tenantOrgIdsInput, roles, options, transaction, synced, syncSource, sourceId }) => {
     const phone = phoneRaw ? normalizePhone(phoneRaw) : phoneRaw;
     if (email && (await models.user.count({ where: { email, tenantId }, transaction })) > 0) {
       throw new BusinessError('USER_EMAIL_DUPLICATE', '邮箱不能重复');
@@ -26,7 +26,7 @@ module.exports = fp(async (fastify, options) => {
     if (phone && (await models.user.count({ where: { phone, tenantId }, transaction })) > 0) {
       throw new BusinessError('USER_PHONE_DUPLICATE', '手机号不能重复');
     }
-    if (!email && !phone) {
+    if (!synced && !email && !phone) {
       throw new BusinessError('USER_CONTACT_REQUIRED', '手机号或邮箱不能同时为空');
     }
 
@@ -48,10 +48,7 @@ module.exports = fp(async (fastify, options) => {
       throw new Error('租户用户数量已达到上限');
     }
 
-    const { tenantOrgIds, tenantOrgId: primaryOrgId } = pickOrgIdsFromInput({
-      tenantOrgId,
-      tenantOrgIds: tenantOrgIdsInput
-    });
+    const tenantOrgIds = pickOrgIdsFromInput({ tenantOrgIds: tenantOrgIdsInput });
     if (tenantOrgIds.length) {
       await assertTenantOrgIds({ tenantId, tenantOrgIds, transaction });
     }
@@ -67,9 +64,11 @@ module.exports = fp(async (fastify, options) => {
         description,
         tenantId,
         roles: checkedRoles,
-        tenantOrgId: primaryOrgId,
         tenantOrgIds,
-        options
+        options,
+        synced: synced || false,
+        syncSource: syncSource || null,
+        sourceId: sourceId || null
       },
       { transaction }
     );
@@ -78,7 +77,7 @@ module.exports = fp(async (fastify, options) => {
   const detail = async ({ tenantId, id }) => {
     await services.tenant.detail({ id: tenantId, withTenantSetting: false });
     const tenantUser = await models.user.findByPk(id, {
-      include: [models.org, models.tenant]
+      include: [models.tenant]
     });
     if (!tenantUser) {
       throw new Error('租户用户不存在');
@@ -181,15 +180,20 @@ module.exports = fp(async (fastify, options) => {
         {
           model: models.tenant,
           include: models.company
-        },
-        {
-          model: models.org
         }
       ],
       where: {
         userId: authenticatePayload.id
       }
     });
+
+    const orgRows = await models.org.findAll({
+      attributes: ['id', 'name', 'parentId']
+    });
+    const orgById = new Map(orgRows.map(o => [String(o.id), o]));
+    for (const item of list) {
+      attachUserOrgDisplay(item, orgById, buildOrgNamePath);
+    }
 
     const defaultTenant = await models.userDefault.findOne({
       where: { userId: authenticatePayload.id }
@@ -284,8 +288,16 @@ module.exports = fp(async (fastify, options) => {
       whereQuery.id = id;
     }
 
+    if (filter.synced != null && filter.synced !== '') {
+      const syncedValue = filter.synced === 'true' || filter.synced === true;
+      if (syncedValue) {
+        whereQuery.synced = true;
+      } else {
+        whereQuery[Op.and] = [...(whereQuery[Op.and] || []), { [Op.or]: [{ synced: false }, { synced: null }] }];
+      }
+    }
+
     const { count, rows } = await models.user.findAndCountAll({
-      include: models.org,
       where: whereQuery,
       offset: perPage * (currentPage - 1),
       limit: perPage,
@@ -324,7 +336,7 @@ module.exports = fp(async (fastify, options) => {
     return tenantUser;
   };
 
-  const save = async ({ id, tenantId, tenantOrgId, tenantOrgIds: tenantOrgIdsInput, avatar, name, email, phone, roles = [], description, options }) => {
+  const save = async ({ id, tenantId, tenantOrgIds: tenantOrgIdsInput, avatar, name, email, phone, roles = [], description, options }) => {
     const tenantUser = await detail({ tenantId, id });
 
     if (phone) {
@@ -336,16 +348,13 @@ module.exports = fp(async (fastify, options) => {
     if (phone && (await models.user.count({ where: { phone, id: { [Op.not]: tenantUser.id }, tenantId } })) > 0) {
       throw new BusinessError('USER_PHONE_DUPLICATE', '手机号不能重复');
     }
-    if (!email && !phone) {
+    if (!tenantUser.synced && !email && !phone) {
       throw new BusinessError('USER_CONTACT_REQUIRED', '手机号或邮箱不能同时为空');
     }
 
     const checkedRoles = await services.role.checkRoles({ tenantId, roles });
     const previousOrgIds = getUserOrgIds(tenantUser);
-    const { tenantOrgIds, tenantOrgId: primaryOrgId } = pickOrgIdsFromInput({
-      tenantOrgId,
-      tenantOrgIds: tenantOrgIdsInput
-    });
+    const tenantOrgIds = pickOrgIdsFromInput({ tenantOrgIds: tenantOrgIdsInput });
     if (tenantOrgIds.length) {
       await assertTenantOrgIds({ tenantId, tenantOrgIds });
     }
@@ -363,17 +372,18 @@ module.exports = fp(async (fastify, options) => {
       );
     }
 
-    await tenantUser.update({
-      tenantOrgId: primaryOrgId,
+    const updateData = {
       tenantOrgIds,
       avatar,
-      name,
-      email,
-      phone,
-      description,
       roles: checkedRoles,
       options
-    });
+    };
+
+    if (!tenantUser.synced) {
+      Object.assign(updateData, { name, email, phone, description });
+    }
+
+    await tenantUser.update(updateData);
 
     return tenantUser;
   };
@@ -420,6 +430,14 @@ module.exports = fp(async (fastify, options) => {
         return { id: item.id, code: item.code, name: item.name, description: item.description, type: item.type };
       })
     );
+
+    const orgRows = await models.org.findAll({
+      where: { tenantId: tenantUser.tenantId },
+      attributes: ['id', 'name', 'parentId']
+    });
+    const orgById = new Map(orgRows.map(o => [String(o.id), o]));
+    attachUserOrgDisplay(tenantUser, orgById, buildOrgNamePath);
+
     return tenantUser;
   };
 

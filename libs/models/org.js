@@ -21,6 +21,26 @@ module.exports = ({ DataTypes, definePrimaryType, options }) => {
         comment: '部门负责人（租户用户ID）',
         allowNull: true
       }),
+      status: {
+        type: DataTypes.ENUM('open', 'closed'),
+        comment: '状态:开启，关闭',
+        defaultValue: 'open'
+      },
+      synced: {
+        type: DataTypes.BOOLEAN,
+        comment: '是否通过同步进入系统',
+        defaultValue: false
+      },
+      syncSource: {
+        type: DataTypes.STRING,
+        comment: '同步源标识',
+        allowNull: true
+      },
+      sourceId: {
+        type: DataTypes.STRING,
+        comment: '同步源中的原始ID',
+        allowNull: true
+      },
       options: {
         type: DataTypes.JSONB,
         comment: '扩展字段'
@@ -38,7 +58,17 @@ module.exports = ({ DataTypes, definePrimaryType, options }) => {
       });
     },
     options: {
-      comment: '租户组织'
+      comment: '租户组织',
+      indexes: [
+        {
+          fields: ['tenant_id', 'sync_source', 'source_id'],
+          unique: true,
+          where: {
+            deleted_at: null,
+            synced: true
+          }
+        }
+      ]
     }
   };
 };

@@ -317,6 +317,71 @@ module.exports = fp(async (fastify, options) => {
     }
   );
 
+  fastify.get(
+    `${options.prefix}/org-link-config`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '获取组织关联配置'
+      }
+    },
+    async request => {
+      return services.orgSync.getConfig({ tenantId: request.tenantUserInfo.tenantId });
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/org-link-save`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '保存组织关联配置',
+        body: {
+          type: 'object',
+          properties: {
+            source: { type: 'string', enum: ['wecom', 'dingtalk'] },
+            syncInterval: { type: 'string', enum: ['daily', 'weekly', 'monthly', 'yearly', 'off'] },
+            targetId: { type: 'string' }
+          },
+          required: ['source', 'syncInterval', 'targetId']
+        }
+      }
+    },
+    async request => {
+      const { source, syncInterval, targetId } = request.body;
+      await services.orgSync.saveConfig({ tenantId: request.tenantUserInfo.tenantId, source, syncInterval, targetId });
+      return {};
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/org-link-cancel`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '取消组织关联'
+      }
+    },
+    async request => {
+      await services.orgSync.cancelConfig({ tenantId: request.tenantUserInfo.tenantId });
+      return {};
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/org-link-sync`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '手动同步组织架构'
+      }
+    },
+    async request => {
+      await services.orgSync.triggerSync({ tenantId: request.tenantUserInfo.tenantId });
+      return {};
+    }
+  );
+
   fastify.post(
     `${options.prefix}/user-create`,
     {
@@ -327,9 +392,6 @@ module.exports = fp(async (fastify, options) => {
           type: 'object',
           properties: {
             name: {
-              type: 'string'
-            },
-            tenantOrgId: {
               type: 'string'
             },
             tenantOrgIds: {
@@ -402,9 +464,6 @@ module.exports = fp(async (fastify, options) => {
               type: 'string'
             },
             name: {
-              type: 'string'
-            },
-            tenantOrgId: {
               type: 'string'
             },
             tenantOrgIds: {
@@ -580,6 +639,48 @@ module.exports = fp(async (fastify, options) => {
         })
       );
       return {};
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/send-org-message`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '发送组织同步消息',
+        body: {
+          type: 'object',
+          properties: {
+            userIds: {
+              type: 'array',
+              items: { type: 'string' },
+              minItems: 1
+            },
+            content: {
+              type: 'object',
+              properties: {
+                content: { type: 'string' }
+              },
+              required: ['content']
+            },
+            msgtype: {
+              type: 'string',
+              enum: ['text', 'markdown'],
+              default: 'text'
+            }
+          },
+          required: ['userIds', 'content']
+        }
+      }
+    },
+    async request => {
+      const { userIds, content, msgtype } = request.body;
+      return services.orgSync.sendMessage({
+        tenantId: request.tenantUserInfo.tenantId,
+        userIds,
+        content,
+        msgtype
+      });
     }
   );
 
