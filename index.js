@@ -42,7 +42,9 @@ module.exports = fp(
           }
           return fastify.account.authenticate.admin;
         },
-        permissionsProfile: path.resolve(process.cwd(), './libs/permissions.js')
+        permissionsProfile: path.resolve(process.cwd(), './libs/permissions.js'),
+        syncOrgTask: null,
+        sendOrgMessage: null
       },
       options
     );

@@ -40,17 +40,31 @@ module.exports = ({ DataTypes, options }) => {
         comment: '所属组织（可多选）',
         defaultValue: []
       },
+      synced: {
+        type: DataTypes.BOOLEAN,
+        comment: '是否通过同步进入系统',
+        defaultValue: false
+      },
+      syncSource: {
+        type: DataTypes.STRING,
+        comment: '同步源标识',
+        allowNull: true
+      },
+      sourceId: {
+        type: DataTypes.STRING,
+        comment: '同步源中的原始ID',
+        allowNull: true
+      },
       options: {
         type: DataTypes.JSONB,
         comment: '扩展字段'
       }
     },
-    associate: ({ user: tenantUser, tenant, org }) => {
+    associate: ({ user: tenantUser, tenant }) => {
       tenantUser.belongsTo(options.getUserModel());
       tenantUser.belongsTo(tenant, {
         allowNull: false
       });
-      tenantUser.belongsTo(org);
     },
     options: {
       comment: '租户用户',
@@ -67,6 +81,14 @@ module.exports = ({ DataTypes, options }) => {
           unique: true,
           where: {
             deleted_at: null
+          }
+        },
+        {
+          fields: ['tenant_id', 'sync_source', 'source_id'],
+          unique: true,
+          where: {
+            deleted_at: null,
+            synced: true
           }
         }
       ]

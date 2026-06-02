@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * @param {{ tenantOrgId?: unknown, tenantOrgIds?: unknown }} user
+ * @param {{ tenantOrgIds?: unknown }} user
  * @returns {string[]}
  */
 const getUserOrgIds = user => {
@@ -13,19 +13,16 @@ const getUserOrgIds = user => {
       }
     }
   }
-  if (user?.tenantOrgId != null && user.tenantOrgId !== '') {
-    ids.push(String(user.tenantOrgId));
-  }
   return [...new Set(ids)];
 };
 
 /**
- * 从接口入参解析组织 id 列表（兼容单选 tenantOrgId 与多选 tenantOrgIds）。
+ * 从接口入参解析组织 id 列表。
  *
- * @param {{ tenantOrgId?: unknown, tenantOrgIds?: unknown }} input
- * @returns {{ tenantOrgIds: string[], tenantOrgId: string | null }}
+ * @param {{ tenantOrgIds?: unknown }} input
+ * @returns {string[]}
  */
-const pickOrgIdsFromInput = ({ tenantOrgId, tenantOrgIds }) => {
+const pickOrgIdsFromInput = ({ tenantOrgIds }) => {
   const raw = [];
   const push = value => {
     if (value == null || value === '') {
@@ -42,21 +39,14 @@ const pickOrgIdsFromInput = ({ tenantOrgId, tenantOrgIds }) => {
     const list = Array.isArray(tenantOrgIds) ? tenantOrgIds : [tenantOrgIds];
     list.forEach(push);
   }
-  if (tenantOrgId != null) {
-    push(tenantOrgId);
-  }
 
-  const tenantOrgIdsNormalized = [...new Set(raw.filter(Boolean))];
-  return {
-    tenantOrgIds: tenantOrgIdsNormalized,
-    tenantOrgId: tenantOrgIdsNormalized[0] || null
-  };
+  return [...new Set(raw.filter(Boolean))];
 };
 
 /**
- * 用户是否属于指定组织（含 tenantOrgIds 与兼容字段 tenantOrgId）。
+ * 用户是否属于指定组织。
  *
- * @param {{ tenantOrgId?: unknown, tenantOrgIds?: unknown }} user
+ * @param {{ tenantOrgIds?: unknown }} user
  * @param {string} orgId
  */
 const userBelongsToOrg = (user, orgId) => {
@@ -73,9 +63,10 @@ const buildUserOrgMembershipWhere = (orgIds, Op) => {
   if (!unique.length) {
     return null;
   }
-  return {
-    [Op.or]: unique.flatMap(oid => [{ tenantOrgId: oid }, { tenantOrgIds: { [Op.contains]: [oid] } }])
-  };
+  if (unique.length === 1) {
+    return { tenantOrgIds: { [Op.contains]: [unique[0]] } };
+  }
+  return { [Op.or]: unique.map(oid => ({ tenantOrgIds: { [Op.contains]: [oid] } })) };
 };
 
 /**
@@ -102,14 +93,6 @@ const attachUserOrgDisplay = (item, orgById, buildOrgNamePath) => {
   item.setDataValue('tenantOrgIds', orgIds);
   item.setDataValue('tenantOrgs', tenantOrgs);
   item.setDataValue('tenantOrgPath', tenantOrgPath);
-  if (tenantOrgs[0]) {
-    const primary = tenantOrgs[0];
-    if (item.tenantOrg) {
-      item.tenantOrg.setDataValue('path', primary.path);
-    } else if (orgIds[0]) {
-      item.setDataValue('tenantOrg', { id: primary.id, name: primary.name, path: primary.path });
-    }
-  }
 };
 
 module.exports = {

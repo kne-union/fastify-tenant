@@ -69,7 +69,7 @@ module.exports = fp(async (fastify, options) => {
 
     const me = await models.user.findOne({
       where: { id: currentTenantUserId, tenantId },
-      attributes: ['id', 'tenantOrgId', 'tenantOrgIds'],
+      attributes: ['id', 'tenantOrgIds'],
       transaction
     });
     if (!me) {

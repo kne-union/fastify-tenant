@@ -10,11 +10,6 @@ module.exports = {
     name: {
       type: 'string'
     },
-    tenantOrgId: {
-      type: ['string', 'null'],
-      default: null,
-      description: '主组织（兼容），通常取 tenantOrgIds 第一项'
-    },
     tenantOrgIds: {
       type: 'array',
       items: { type: 'string' },
