@@ -133,9 +133,9 @@ module.exports = fp(async (fastify, options) => {
             companyTags: { type: 'array', items: { type: 'object' } },
             website: { type: 'string' },
             description: { type: 'string' },
-            banners: { type: 'array', items: { type: 'object' } },
-            teamDescription: { type: 'object' },
-            developmentHistory: { type: 'object' },
+            banners: { type: 'array', items: { type: 'string' } },
+            teamDescription: { type: 'array', items: { type: 'object' } },
+            developmentHistory: { type: 'array', items: { type: 'object' } },
             contact: { type: 'object' },
             options: { type: 'object' }
           }
