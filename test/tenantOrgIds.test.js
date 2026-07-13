@@ -8,20 +8,19 @@ describe('tenantOrgIds utils', () => {
   it('pickOrgIdsFromInput merges single and multi', () => {
     assert.deepEqual(
       pickOrgIdsFromInput({
-        tenantOrgId: 'a',
-        tenantOrgIds: [{ id: 'b' }, 'c']
+        tenantOrgIds: [{ id: 'b' }, 'c', 'a']
       }),
-      { tenantOrgIds: ['b', 'c', 'a'], tenantOrgId: 'b' }
+      ['b', 'c', 'a']
     );
   });
 
-  it('getUserOrgIds deduplicates legacy tenantOrgId and tenantOrgIds', () => {
-    assert.deepEqual(getUserOrgIds({ tenantOrgId: 'a', tenantOrgIds: ['a', 'b'] }), ['a', 'b']);
+  it('getUserOrgIds deduplicates tenantOrgIds', () => {
+    assert.deepEqual(getUserOrgIds({ tenantOrgIds: ['a', 'a', 'b'] }), ['a', 'b']);
   });
 
   it('userBelongsToOrg checks tenantOrgIds', () => {
     assert.equal(userBelongsToOrg({ tenantOrgIds: ['x'] }, 'x'), true);
-    assert.equal(userBelongsToOrg({ tenantOrgId: 'y' }, 'x'), false);
+    assert.equal(userBelongsToOrg({ tenantOrgIds: ['y'] }, 'x'), false);
   });
 });
 

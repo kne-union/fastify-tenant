@@ -68,6 +68,9 @@ function createControllerServices(overrides = {}) {
       save: async b => b,
       setStatus: noop,
       remove: noop
+    },
+    dataScope: {
+      resolveOrgRuleTenantUserIds: async () => ['u1']
     }
   };
   return Object.assign(base, overrides);

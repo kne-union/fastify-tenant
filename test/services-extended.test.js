@@ -221,7 +221,7 @@ describe('services 扩展（tenant / role / user / company / setting）', () => 
       name: '子级组织用户',
       email: 'child-subtree-filter@test.com',
       phone: '',
-      tenantOrgId: child.id,
+      tenantOrgIds: [child.id],
       roles: []
     });
     const userInParent = await ctx.ns.services.user.create({
@@ -229,7 +229,7 @@ describe('services 扩展（tenant / role / user / company / setting）', () => 
       name: '父级组织用户',
       email: 'parent-subtree-filter@test.com',
       phone: '',
-      tenantOrgId: parent.id,
+      tenantOrgIds: [parent.id],
       roles: []
     });
     const otherOrg = await ctx.ns.services.org.create({ tenantId, name: '其他部门', parentId: null });
@@ -238,7 +238,7 @@ describe('services 扩展（tenant / role / user / company / setting）', () => 
       name: '其他组织用户',
       email: 'other-subtree-filter@test.com',
       phone: '',
-      tenantOrgId: otherOrg.id,
+      tenantOrgIds: [otherOrg.id],
       roles: []
     });
 

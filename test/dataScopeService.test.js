@@ -72,6 +72,9 @@ describe('dataScope service', () => {
             if (where[Op.or]) {
               return matchOrgCond(u, { [Op.or]: where[Op.or] });
             }
+            if (where.tenantOrgIds?.[Op.contains]) {
+              return matchOrgCond(u, { tenantOrgIds: where.tenantOrgIds });
+            }
             return true;
           });
           if (!attributes || !attributes.length) {

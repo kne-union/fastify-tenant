@@ -11,10 +11,10 @@ describe('buildOrgSubtreeUserCounts', () => {
       { id: 'c', parentId: 'b' }
     ];
     const users = [
-      { tenantOrgId: 'a' },
-      { tenantOrgId: 'b' },
-      { tenantOrgId: 'c' },
-      { tenantOrgId: 'c' }
+      { tenantOrgIds: ['a'] },
+      { tenantOrgIds: ['b'] },
+      { tenantOrgIds: ['c'] },
+      { tenantOrgIds: ['c'] }
     ];
     const map = buildOrgSubtreeUserCounts(orgs, users);
     assert.equal(map.get('a'), 4);

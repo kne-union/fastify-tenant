@@ -27,7 +27,7 @@ describe('org leader membership', () => {
     await ctx.fastify.close();
   });
 
-  it('rejects leader who is not a department member on save', async () => {
+  it('auto-enrolls leader into department on save when not already a member', async () => {
     const deptA = await ctx.ns.services.org.create({ tenantId, name: '部门A', parentId: null });
     const deptB = await ctx.ns.services.org.create({ tenantId, name: '部门B', parentId: null });
     const user = await ctx.ns.services.user.create({
@@ -35,20 +35,21 @@ describe('org leader membership', () => {
       name: '仅B部门用户',
       email: 'leader-b-only@test.com',
       phone: '',
-      tenantOrgId: deptB.id,
       tenantOrgIds: [deptB.id],
       roles: []
     });
 
-    await assert.rejects(
-      () =>
-        ctx.ns.services.org.save({
-          tenantId,
-          id: deptA.id,
-          leaderUserId: user.id
-        }),
-      /负责人必须是当前部门的成员/
-    );
+    await ctx.ns.services.org.save({
+      tenantId,
+      id: deptA.id,
+      leaderUserId: user.id
+    });
+    const withLeader = await ctx.ns.services.org.detail({ id: deptA.id });
+    assert.equal(String(withLeader.leaderUserId), String(user.id));
+    const refreshed = await ctx.ns.services.user.detail({ tenantId, id: user.id });
+    const orgIds = Array.isArray(refreshed.tenantOrgIds) ? refreshed.tenantOrgIds.map(String) : [];
+    assert.ok(orgIds.includes(String(deptA.id)));
+    assert.ok(orgIds.includes(String(deptB.id)));
 
     await ctx.ns.services.user.remove({ tenantId, id: user.id });
     await ctx.ns.services.org.remove({ tenantId, id: deptA.id });
@@ -62,7 +63,6 @@ describe('org leader membership', () => {
       name: '负责人',
       email: 'leader-clear@test.com',
       phone: '',
-      tenantOrgId: dept.id,
       tenantOrgIds: [dept.id],
       roles: []
     });
@@ -84,7 +84,6 @@ describe('org leader membership', () => {
       name: '待任命负责人',
       email: 'leader-auto-enroll@test.com',
       phone: '',
-      tenantOrgId: null,
       tenantOrgIds: [],
       roles: []
     });
