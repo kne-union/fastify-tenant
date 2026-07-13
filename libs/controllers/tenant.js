@@ -112,6 +112,10 @@ module.exports = fp(async (fastify, options) => {
               type: 'string',
               enum: ['self', 'owner', 'org', 'orgSubtree'],
               default: 'owner'
+            },
+            moduleCode: {
+              type: 'string',
+              description: '非空时合并该模块下共享组数据来源；不传或空则忽略共享组'
             }
           }
         }
@@ -119,12 +123,41 @@ module.exports = fp(async (fastify, options) => {
     },
     async request => {
       const type = request.query.type;
-      const tenantUserIds = await services.dataScope.resolveOrgRuleTenantUserIds({
+      const moduleCode = request.query.moduleCode != null && String(request.query.moduleCode).trim() ? String(request.query.moduleCode).trim() : null;
+      const args = {
         tenantId: request.tenantUserInfo.tenantId,
         currentTenantUserId: request.tenantUserInfo.id,
         type
+      };
+      const tenantUserIds = moduleCode ? await services.dataScope.resolveVisibleTenantUserIds({ ...args, moduleCode }) : await services.dataScope.resolveOrgRuleTenantUserIds(args);
+      return { tenantUserIds, type, moduleCode };
+    }
+  );
+
+  fastify.get(
+    `${options.prefix}/data-permission-by-code`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '按权限码获取当前用户数据权限（可见租户用户）',
+        query: {
+          type: 'object',
+          properties: {
+            permissionCode: {
+              type: 'string',
+              description: '功能权限码，用于定位模块 dataScope 并合并共享组'
+            }
+          },
+          required: ['permissionCode']
+        }
+      }
+    },
+    async request => {
+      return services.dataScope.resolveTenantUserIdsByPermissionCode({
+        tenantId: request.tenantUserInfo.tenantId,
+        currentTenantUserId: request.tenantUserInfo.id,
+        permissionCode: String(request.query.permissionCode).trim()
       });
-      return { tenantUserIds, type };
     }
   );
 

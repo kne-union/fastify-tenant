@@ -70,7 +70,14 @@ function createControllerServices(overrides = {}) {
       remove: noop
     },
     dataScope: {
-      resolveOrgRuleTenantUserIds: async () => ['u1']
+      resolveOrgRuleTenantUserIds: async () => ['u1'],
+      resolveVisibleTenantUserIds: async () => ['u1', 'u2'],
+      resolveTenantUserIdsByPermissionCode: async () => ({
+        tenantUserIds: ['u1'],
+        moduleCode: 'setting:permission:shared-group',
+        type: 'org',
+        dataScopeOpen: true
+      })
     }
   };
   return Object.assign(base, overrides);

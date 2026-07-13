@@ -295,13 +295,26 @@ GET `/api/tenant/getUserInfo`
 
 GET `/api/tenant/data-permission`
 
-按组织范围规则解析当前登录租户用户可见的租户用户 ID 列表（不含共享组合并）。
+按组织范围规则解析当前登录租户用户可见的租户用户 ID 列表。传入非空 `moduleCode` 时额外合并该模块下共享组数据来源；不传或空则忽略共享组。
 
 | 参数 | 位置 | 类型 | 必填 | 说明 |
 |------|------|------|------|------|
 | type | query | string | 否 | 数据范围：`self` / `owner` / `org` / `orgSubtree`，默认 `owner` |
+| moduleCode | query | string | 否 | 非空时合并共享组；不传或空则忽略共享组 |
 
-返回 `{ tenantUserIds: string[], type: string }`。
+返回 `{ tenantUserIds: string[], type: string, moduleCode: string | null }`。
+
+#### 按权限码获取当前用户数据权限（可见租户用户）
+
+GET `/api/tenant/data-permission-by-code`
+
+根据功能权限码从权限树定位所属模块的 `dataScope`：已开启时按配置的 `type` 解析组织范围并合并该模块共享组数据来源；未开启时回退为仅本人（`self`）。
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| permissionCode | query | string | 是 | 功能权限码，如 `setting:permission:shared-group:view` |
+
+返回 `{ tenantUserIds: string[], moduleCode: string | null, type: string, dataScopeOpen: boolean }`。
 
 #### 获取公司信息
 
