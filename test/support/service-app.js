@@ -263,6 +263,7 @@ async function buildServiceApp() {
           ...data,
           id,
           tenantId: data.tenantId,
+          status: data.status || 'open',
           update: async patch => Object.assign(row, patch),
           destroy: async () => orgs.delete(id)
         };
@@ -283,9 +284,36 @@ async function buildServiceApp() {
         );
       },
       async findAll({ where, attributes } = {}) {
+        const { Op } = require('sequelize');
         return [...orgs.values()]
           .filter(o => {
-            for (const k of Object.keys(where || {})) {
+            if (!where) {
+              return true;
+            }
+            if (where.tenantId != null && o.tenantId !== where.tenantId) {
+              return false;
+            }
+            if (where.status != null && o.status !== where.status) {
+              return false;
+            }
+            if (where.name != null && o.name !== where.name) {
+              return false;
+            }
+            if (where.parentId !== undefined && o.parentId !== where.parentId) {
+              return false;
+            }
+            if (where[Op.or]) {
+              return where[Op.or].some(clause => {
+                if (clause.id?.[Op.in]) {
+                  return clause.id[Op.in].includes(o.id);
+                }
+                if (clause.name?.[Op.in]) {
+                  return clause.name[Op.in].includes(o.name);
+                }
+                return Object.entries(clause).every(([ck, cv]) => o[ck] === cv);
+              });
+            }
+            for (const k of Object.keys(where)) {
               if (o[k] !== where[k]) return false;
             }
             return true;
@@ -303,7 +331,7 @@ async function buildServiceApp() {
       },
       async count({ where } = {}) {
         return [...orgs.values()].filter(o => {
-          for (const k of Object.keys(where)) {
+          for (const k of Object.keys(where || {})) {
             if (o[k] !== where[k]) return false;
           }
           return true;
@@ -370,6 +398,11 @@ async function buildServiceApp() {
             return false;
           }
         }
+        if (where.tenantOrgIds?.[Op.contains]) {
+          if (!models.user.matchesCondition(u, { tenantOrgIds: where.tenantOrgIds })) {
+            return false;
+          }
+        }
         if (where.id != null && where.id !== u.id) {
           return false;
         }
@@ -383,7 +416,7 @@ async function buildServiceApp() {
           if (k === 'tenantId' || k === String(Op.and) || k === String(Op.or)) {
             continue;
           }
-          if (k === 'roles' || k === 'id') {
+          if (k === 'roles' || k === 'id' || k === 'tenantOrgIds') {
             continue;
           }
           if (v && typeof v === 'object' && Array.isArray(v[Op.in])) {

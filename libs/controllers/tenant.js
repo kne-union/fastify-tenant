@@ -100,6 +100,35 @@ module.exports = fp(async (fastify, options) => {
   );
 
   fastify.get(
+    `${options.prefix}/data-permission`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '获取当前用户数据权限（可见租户用户）',
+        query: {
+          type: 'object',
+          properties: {
+            type: {
+              type: 'string',
+              enum: ['self', 'owner', 'org', 'orgSubtree'],
+              default: 'owner'
+            }
+          }
+        }
+      }
+    },
+    async request => {
+      const type = request.query.type;
+      const tenantUserIds = await services.dataScope.resolveOrgRuleTenantUserIds({
+        tenantId: request.tenantUserInfo.tenantId,
+        currentTenantUserId: request.tenantUserInfo.id,
+        type
+      });
+      return { tenantUserIds, type };
+    }
+  );
+
+  fastify.get(
     `${options.prefix}/company-detail`,
     {
       onRequest: [userAuthenticate, authenticate.tenantUser],

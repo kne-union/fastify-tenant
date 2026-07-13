@@ -291,6 +291,18 @@ GET `/api/tenant/getUserInfo`
 
 无参数。返回 `{ userInfo, tenantUserInfo, company, tenant }`。
 
+#### 获取当前用户数据权限（可见租户用户）
+
+GET `/api/tenant/data-permission`
+
+按组织范围规则解析当前登录租户用户可见的租户用户 ID 列表（不含共享组合并）。
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| type | query | string | 否 | 数据范围：`self` / `owner` / `org` / `orgSubtree`，默认 `owner` |
+
+返回 `{ tenantUserIds: string[], type: string }`。
+
 #### 获取公司信息
 
 GET `/api/tenant/company-detail`
