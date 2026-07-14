@@ -4,7 +4,7 @@ const roleSchema = require('../schema/role');
 
 module.exports = fp(async (fastify, options) => {
   const { services, authenticate } = fastify[options.name];
-  const userAuthenticate = options.getUserAuthenticate();
+  const userAuthenticate = authenticate.user;
 
   fastify.post(
     `${options.prefix}/role/create`,

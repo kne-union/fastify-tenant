@@ -399,21 +399,8 @@ module.exports = fp(async (fastify, options) => {
     return await services.role.combinedPermissions({ tenantId, roles: tenantUser.roles });
   };
 
-  const getTenantUserInfo = async authenticatePayload => {
-    const tenantUserDefault = await models.userDefault.findOne({
-      where: { userId: authenticatePayload.id }
-    });
-    if (!tenantUserDefault) {
-      throw new Forbidden('未设置默认租户');
-    }
-    const tenantUser = await models.user.findOne({
-      include: {
-        model: models.tenant,
-        include: models.company
-      },
-      where: { tenantId: tenantUserDefault.tenantId, userId: authenticatePayload.id, status: 'open' }
-    });
-    if (!tenantUser) {
+  const enrichTenantUserInfo = async tenantUser => {
+    if (!tenantUser || tenantUser.status !== 'open') {
       throw new Forbidden('当前租户用户不存在或账号被关闭');
     }
     if (tenantUser.tenant?.status !== 'open') {
@@ -426,7 +413,7 @@ module.exports = fp(async (fastify, options) => {
     tenantUser.setDataValue('permissions', (await permissionList({ tenantId: tenantUser.tenantId, id: tenantUser.id })).codes);
     tenantUser.setDataValue(
       'roleDetails',
-      (await services.role.rolesToList({ tenantId: tenantUserDefault.tenantId, roles: tenantUser.roles })).map(item => {
+      (await services.role.rolesToList({ tenantId: tenantUser.tenantId, roles: tenantUser.roles })).map(item => {
         return { id: item.id, code: item.code, name: item.name, description: item.description, type: item.type };
       })
     );
@@ -441,6 +428,87 @@ module.exports = fp(async (fastify, options) => {
     return tenantUser;
   };
 
+  const tenantUserInclude = {
+    model: models.tenant,
+    include: models.company
+  };
+
+  const getTenantUserInfo = async authenticatePayload => {
+    const tenantUserDefault = await models.userDefault.findOne({
+      where: { userId: authenticatePayload.id }
+    });
+    if (!tenantUserDefault) {
+      throw new Forbidden('未设置默认租户');
+    }
+    const tenantUser = await models.user.findOne({
+      include: tenantUserInclude,
+      where: { tenantId: tenantUserDefault.tenantId, userId: authenticatePayload.id, status: 'open' }
+    });
+    return enrichTenantUserInfo(tenantUser);
+  };
+
+  const getThirdLoginUrl = async ({ tenantId, platform }) => {
+    const tenant = await services.tenant.detail({ id: tenantId });
+    if (typeof options?.thirdLogin?.getThirdLoginUrl !== 'function') {
+      throw new Error('租户不支持第三方登录');
+    }
+    const url = await options.thirdLogin.getThirdLoginUrl({ tenant, platform });
+
+    return {
+      companyName: tenant.company?.name,
+      logo: tenant.company?.logo,
+      redirectUrl: url
+    };
+  };
+
+  const getThirdLoginResult = async props => {
+    if (!props.tenantId) {
+      throw new Error('租户ID不能为空');
+    }
+    if (typeof options?.thirdLogin?.getThirdLoginResult !== 'function') {
+      throw new Error('租户不支持第三方登录');
+    }
+    const thirdLoginResult = await options.thirdLogin.getThirdLoginResult(props);
+
+    const user = await models.user.findOne({
+      where: {
+        tenantId: props.tenantId,
+        synced: true,
+        sourceId: thirdLoginResult.id,
+        syncSource: thirdLoginResult.platform,
+        status: 'open'
+      }
+    });
+    if (!user) {
+      throw new Error('用户不存在或已关闭');
+    }
+
+    ['avatar', 'gender', 'description', 'name', 'email', 'phone'].forEach(name => {
+      if (thirdLoginResult[name]) {
+        user[name] = thirdLoginResult[name];
+      }
+    });
+
+    await user.save();
+
+    return {
+      token: fastify.jwt.sign({ payload: { id: user.id, tenantId: user.tenantId } }, { expiresIn: '7d' }),
+      platform: thirdLoginResult.platform,
+      redirectUrl: '/tenant',
+      name: user.name,
+      avatar: user.avatar,
+      email: user.email,
+      phone: user.phone
+    };
+  };
+
+  const getThirdLoginTenantUserInfo = async authenticatePayload => {
+    const tenantUser = await models.user.findByPk(authenticatePayload.id, {
+      include: tenantUserInclude
+    });
+    return enrichTenantUserInfo(tenantUser);
+  };
+
   Object.assign(fastify[options.name].services, {
     user: {
       create,
@@ -452,6 +520,9 @@ module.exports = fp(async (fastify, options) => {
       tenantList,
       setDefaultTenant,
       getTenantUserInfo,
+      getThirdLoginTenantUserInfo,
+      getThirdLoginUrl,
+      getThirdLoginResult,
       list,
       setStatus,
       save,

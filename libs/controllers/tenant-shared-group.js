@@ -4,7 +4,7 @@ const sharedGroupSchema = require('../schema/shared-group');
 
 module.exports = fp(async (fastify, options) => {
   const { services, authenticate } = fastify[options.name];
-  const userAuthenticate = options.getUserAuthenticate();
+  const userAuthenticate = authenticate.user;
 
   fastify.get(
     `${options.prefix}/shared-group/list`,

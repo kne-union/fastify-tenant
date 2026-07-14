@@ -3,6 +3,8 @@ const path = require('node:path');
 const yml = require('js-yaml');
 const fs = require('node:fs/promises');
 const { BusinessError } = require('./libs/utils/errors');
+const httpErrors = require('http-errors');
+const { Unauthorized } = httpErrors;
 
 module.exports = fp(
   async function (fastify, options) {
@@ -23,6 +25,7 @@ module.exports = fp(
         name: 'tenant',
         prefix: '/api/tenant',
         clientTokenHeader: 'x-client-user-token',
+        thirdLoginTokenHeader: 'x-third-login-token',
         tenantUserContextName: 'tenantUserInfo',
         getUserModel: () => {
           if (!fastify.account) {
@@ -73,9 +76,34 @@ module.exports = fp(
         [
           'authenticate',
           {
+            user: async request => {
+              if (!request.headers[options.thirdLoginTokenHeader]) {
+                return options.getUserAuthenticate()(request);
+              }
+              const { services } = fastify[options.name];
+              let info;
+              try {
+                info = await request.jwtVerify({
+                  extractToken: () => request.headers[options.thirdLoginTokenHeader]
+                });
+              } catch (e) {
+                throw Unauthorized('身份认证失败');
+              }
+              //这里判断失效时间
+              if (options.jwt?.expires && Date.now() - info.iat * 1000 > options.jwt.expires) {
+                throw Unauthorized('身份认证超时');
+              }
+              request.authenticatePayload = {};
+              request.userInfo = {};
+              request[options.tenantUserContextName] = await services.user.getThirdLoginTenantUserInfo(info.payload);
+            }
+          },
+          {
             tenantUser: async request => {
               const { services } = fastify[options.name];
-              request[options.tenantUserContextName] = await services.user.getTenantUserInfo(request.userInfo);
+              if (!request[options.tenantUserContextName]) {
+                request[options.tenantUserContextName] = await services.user.getTenantUserInfo(request.userInfo);
+              }
             }
           }
         ],
