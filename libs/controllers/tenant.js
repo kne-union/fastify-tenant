@@ -1,8 +1,61 @@
 const fp = require('fastify-plugin');
+const { BusinessError } = require('../utils/errors');
 
 module.exports = fp(async (fastify, options) => {
   const { services, authenticate } = fastify[options.name];
-  const userAuthenticate = options.getUserAuthenticate();
+  const userAuthenticate = authenticate.user; //options.getUserAuthenticate();
+
+  fastify.post(
+    `${options.prefix}/third-login`,
+    {
+      schema: {
+        summary: '获取第三方登录跳转信息',
+        body: {
+          type: 'object',
+          properties: {
+            platform: {
+              type: 'string',
+              enum: ['wecom', 'dingtalk']
+            },
+            tenantId: {
+              type: 'string'
+            }
+          },
+          required: ['platform', 'tenantId']
+        }
+      }
+    },
+    async request => {
+      return services.user.getThirdLoginUrl(request.body);
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/third-login-result`,
+    {
+      schema: {
+        summary: '第三方登录结果处理',
+        body: {
+          type: 'object',
+          properties: {
+            tenantId: {
+              type: 'string'
+            },
+            platform: {
+              type: 'string',
+              enum: ['wecom', 'dingtalk']
+            }
+          },
+          required: ['tenantId'],
+          additionalProperties: true
+        }
+      }
+    },
+    async request => {
+      return services.user.getThirdLoginResult(request.body);
+    }
+  );
+
   fastify.post(
     `${options.prefix}/parse-join-token`,
     {
@@ -41,6 +94,9 @@ module.exports = fp(async (fastify, options) => {
       }
     },
     async request => {
+      if (!request.userInfo.id) {
+        throw new BusinessError(500, '无法获取用户信息');
+      }
       await services.user.join(request.userInfo, request.body);
       return {};
     }
@@ -55,6 +111,9 @@ module.exports = fp(async (fastify, options) => {
       }
     },
     async request => {
+      if (!request.userInfo.id) {
+        throw new BusinessError(500, '无法获取用户信息');
+      }
       return services.user.tenantList(request.userInfo);
     }
   );
@@ -76,6 +135,9 @@ module.exports = fp(async (fastify, options) => {
       }
     },
     async request => {
+      if (!request.userInfo.id) {
+        throw new BusinessError(500, '无法获取用户信息');
+      }
       await services.user.setDefaultTenant(request.userInfo, request.body);
       return {};
     }
