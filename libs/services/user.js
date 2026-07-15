@@ -447,12 +447,12 @@ module.exports = fp(async (fastify, options) => {
     return enrichTenantUserInfo(tenantUser);
   };
 
-  const getThirdLoginUrl = async ({ tenantId, platform }) => {
+  const getThirdLoginUrl = async ({ tenantId, platform, redirect }) => {
     const tenant = await services.tenant.detail({ id: tenantId });
     if (typeof options?.thirdLogin?.getThirdLoginUrl !== 'function') {
       throw new Error('租户不支持第三方登录');
     }
-    const url = await options.thirdLogin.getThirdLoginUrl({ tenant, platform });
+    const url = await options.thirdLogin.getThirdLoginUrl({ tenant, platform, redirect });
 
     return {
       companyName: tenant.company?.name,
