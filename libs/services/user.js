@@ -494,7 +494,7 @@ module.exports = fp(async (fastify, options) => {
     return {
       token: fastify.jwt.sign({ payload: { id: user.id, tenantId: user.tenantId } }, { expiresIn: '7d' }),
       platform: thirdLoginResult.platform,
-      redirectUrl: thirdLoginResult.redirect || '/tenant',
+      redirectUrl: thirdLoginResult.redirect || props.redirect || '/tenant',
       name: user.name,
       avatar: user.avatar,
       email: user.email,
