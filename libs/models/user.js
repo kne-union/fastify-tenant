@@ -77,7 +77,7 @@ module.exports = ({ DataTypes, options }) => {
           }
         },
         {
-          fields: ['tenant_id', 'email'],
+          fields: ['tenant_id', 'email', 'sync_source'],
           unique: true,
           where: {
             deleted_at: null
