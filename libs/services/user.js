@@ -7,6 +7,7 @@ const { collectOrgSubtreeIds } = require('../utils/dataScopeOrgIds');
 const { buildOrgNamePath } = require('../utils/orgPath');
 const { normalizeTenantUserStatus } = require('../utils/normalizeTenantUserStatus');
 const { pickOrgIdsFromInput, buildUserOrgMembershipWhere, attachUserOrgDisplay, getUserOrgIds } = require('../utils/tenantOrgIds');
+const get = require('lodash/get');
 
 module.exports = fp(async (fastify, options) => {
   const { models, services } = fastify[options.name];
@@ -452,11 +453,32 @@ module.exports = fp(async (fastify, options) => {
     if (typeof options?.thirdLogin?.getThirdLoginUrl !== 'function') {
       throw new Error('租户不支持第三方登录');
     }
-    const url = await options.thirdLogin.getThirdLoginUrl({ tenant, platform, redirect });
+
+    const config = await fastify.tenant.services.orgSync.getConfig({ tenantId });
+    if (!config.enabled) {
+      throw new Error('未找到有效的组织关联配置');
+    }
+
+    if (platform && config.source && config.source !== platform) {
+      throw new Error(`平台 ${platform} 与租户组织关联来源 ${config.source} 不一致`);
+    }
+
+    const configProps = get(config, 'props');
+
+    const url =
+      platform === 'dingtalk'
+        ? (() => {
+            if (!(configProps.corpId && configProps.clientId)) {
+              throw new Error('租户参数配置不完整');
+            }
+            return `/third-login-result?platform=dingtalk&code=200&message=success&redirect=${redirect}&tenantId=${tenantId}&corpId=${configProps.corpId}&clientId=${configProps.clientId}`;
+          })()
+        : await options.thirdLogin.getThirdLoginUrl({ tenant, platform, redirect });
 
     return {
       companyName: tenant.company?.name,
       logo: tenant.company?.logo,
+      configProps,
       redirectUrl: url
     };
   };
