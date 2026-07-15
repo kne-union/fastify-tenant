@@ -96,9 +96,7 @@ module.exports = fp(
               request.authenticatePayload = {};
               request.userInfo = {};
               request[options.tenantUserContextName] = await services.user.getThirdLoginTenantUserInfo(info.payload);
-            }
-          },
-          {
+            },
             tenantUser: async request => {
               const { services } = fastify[options.name];
               if (!request[options.tenantUserContextName]) {
