@@ -221,6 +221,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS t_tenant_user_sync_source_id_uniq
     ON "v1"."t_tenant_user" (tenant_id, sync_source, source_id)
     WHERE deleted_at IS NULL AND synced = TRUE;
 
+-- t_tenant_user 邮箱唯一索引（含 sync_source）
+DROP INDEX IF EXISTS "t_tenant_user_tenant_id_email";
+DROP INDEX IF EXISTS "t_tenant_users_tenant_id_email";
+DROP INDEX IF EXISTS "t_tenant_user_tenant_id_email_uk";
+DROP INDEX IF EXISTS "t_tenant_users_tenant_id_email_uk";
+CREATE UNIQUE INDEX IF NOT EXISTS "t_tenant_user_tenant_email_sync_source_uniq"
+    ON "v1"."t_tenant_user" (tenant_id, email, sync_source)
+    WHERE deleted_at IS NULL;
+
 -- t_tenant_org_sync：组织同步记录表
 CREATE TABLE IF NOT EXISTS "v1"."t_tenant_org_sync" (
                                                         id SERIAL PRIMARY KEY,
@@ -242,3 +251,18 @@ COMMENT ON COLUMN "v1".t_tenant_org_sync.status IS '同步状态';
 COMMENT ON COLUMN "v1".t_tenant_org_sync.last_sync_at IS '最后同步时间';
 COMMENT ON COLUMN "v1".t_tenant_org_sync.options IS '扩展字段';
 
+
+BEGIN;
+
+-- 删除旧索引（覆盖 Sequelize sync 常见命名）
+DROP INDEX IF EXISTS "t_tenant_user_tenant_id_email";
+DROP INDEX IF EXISTS "t_tenant_users_tenant_id_email";
+DROP INDEX IF EXISTS "t_tenant_user_tenant_id_email_uk";
+DROP INDEX IF EXISTS "t_tenant_users_tenant_id_email_uk";
+
+-- 新建含 sync_source 的部分唯一索引
+CREATE UNIQUE INDEX IF NOT EXISTS "t_tenant_user_tenant_email_sync_source_uniq"
+    ON t_tenant_user (tenant_id, email, sync_source)
+    WHERE deleted_at IS NULL;
+
+COMMIT;
