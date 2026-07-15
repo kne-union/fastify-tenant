@@ -19,6 +19,9 @@ module.exports = fp(async (fastify, options) => {
             },
             tenantId: {
               type: 'string'
+            },
+            redirect: {
+              type: 'string'
             }
           },
           required: ['platform', 'tenantId']
