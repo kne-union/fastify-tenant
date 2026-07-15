@@ -20,10 +20,10 @@ module.exports = fp(async (fastify, options) => {
 
   const create = async ({ tenantId, avatar, name, email, phone: phoneRaw, description, tenantOrgIds: tenantOrgIdsInput, roles, options, transaction, synced, syncSource, sourceId }) => {
     const phone = phoneRaw ? normalizePhone(phoneRaw) : phoneRaw;
-    if (email && (await models.user.count({ where: { email, tenantId }, transaction })) > 0) {
+    if (email && !synced && (await models.user.count({ where: { email, tenantId }, transaction })) > 0) {
       throw new BusinessError('USER_EMAIL_DUPLICATE', '邮箱不能重复');
     }
-    if (phone && (await models.user.count({ where: { phone, tenantId }, transaction })) > 0) {
+    if (phone && !synced && (await models.user.count({ where: { phone, tenantId }, transaction })) > 0) {
       throw new BusinessError('USER_PHONE_DUPLICATE', '手机号不能重复');
     }
     if (!synced && !email && !phone) {
@@ -342,10 +342,10 @@ module.exports = fp(async (fastify, options) => {
     if (phone) {
       phone = normalizePhone(phone);
     }
-    if (email && (await models.user.count({ where: { email, id: { [Op.not]: tenantUser.id }, tenantId } })) > 0) {
+    if (email && !tenantUser.synced && (await models.user.count({ where: { email, id: { [Op.not]: tenantUser.id }, tenantId } })) > 0) {
       throw new BusinessError('USER_EMAIL_DUPLICATE', '邮箱不能重复');
     }
-    if (phone && (await models.user.count({ where: { phone, id: { [Op.not]: tenantUser.id }, tenantId } })) > 0) {
+    if (phone && !tenantUser.synced && (await models.user.count({ where: { phone, id: { [Op.not]: tenantUser.id }, tenantId } })) > 0) {
       throw new BusinessError('USER_PHONE_DUPLICATE', '手机号不能重复');
     }
     if (!tenantUser.synced && !email && !phone) {
