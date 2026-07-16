@@ -468,10 +468,10 @@ module.exports = fp(async (fastify, options) => {
     const url =
       platform === 'dingtalk'
         ? (() => {
-            if (!(configProps.corpId && configProps.clientId)) {
+            if (!(configProps.corpId && (configProps.client_id || configProps.clientId))) {
               throw new Error('租户参数配置不完整');
             }
-            return `/third-login-result?platform=dingtalk&code=200&message=success&redirect=${redirect}&tenantId=${tenantId}&corpId=${configProps.corpId}&clientId=${configProps.clientId}`;
+            return `/third-login-result?platform=dingtalk&code=200&message=success&redirect=${redirect}&tenantId=${tenantId}&corpId=${configProps.corpId}&clientId=${configProps.client_id || configProps.clientId}`;
           })()
         : await options.thirdLogin.getThirdLoginUrl({ tenant, platform, redirect });
 
