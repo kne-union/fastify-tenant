@@ -403,8 +403,14 @@ async function buildServiceApp() {
             return false;
           }
         }
-        if (where.id != null && where.id !== u.id) {
-          return false;
+        if (where.id != null) {
+          if (typeof where.id === 'object' && Array.isArray(where.id[Op.in])) {
+            if (!where.id[Op.in].map(String).includes(String(u.id))) {
+              return false;
+            }
+          } else if (where.id !== u.id) {
+            return false;
+          }
         }
         if (where.id?.[Op.like]) {
           const pat = String(where.id[Op.like]).replace(/%/g, '');

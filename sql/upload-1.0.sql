@@ -251,6 +251,27 @@ COMMENT ON COLUMN "v1".t_tenant_org_sync.status IS '同步状态';
 COMMENT ON COLUMN "v1".t_tenant_org_sync.last_sync_at IS '最后同步时间';
 COMMENT ON COLUMN "v1".t_tenant_org_sync.options IS '扩展字段';
 
+-- t_tenant_third_login：第三方登录配置表
+CREATE TABLE IF NOT EXISTS "v1"."t_tenant_third_login" (
+    id SERIAL PRIMARY KEY,
+    type VARCHAR(255),
+    config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    options JSONB,
+    tenant_id INT8 NOT NULL REFERENCES "v1".t_tenant(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+
+COMMENT ON TABLE "v1"."t_tenant_third_login" IS '第三方登录配置';
+COMMENT ON COLUMN "v1".t_tenant_third_login.type IS '第三方登录渠道类型';
+COMMENT ON COLUMN "v1".t_tenant_third_login.config IS '第三方登录配置';
+COMMENT ON COLUMN "v1".t_tenant_third_login.options IS '扩展字段';
+
+CREATE UNIQUE INDEX IF NOT EXISTS t_tenant_third_login_tenant_type_uniq
+    ON "v1"."t_tenant_third_login" (tenant_id, type)
+    WHERE deleted_at IS NULL;
+
 
 BEGIN;
 

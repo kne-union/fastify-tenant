@@ -331,6 +331,38 @@ module.exports = fp(async (fastify, options) => {
   );
 
   fastify.post(
+    `${options.prefix}/admin/save-languages`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '保存租户系统语言设置',
+        body: {
+          type: 'object',
+          properties: {
+            tenantId: {
+              type: 'string'
+            },
+            supportLanguage: {
+              type: 'array',
+              items: {
+                type: 'string'
+              },
+              minItems: 1
+            },
+            defaultLanguage: {
+              type: 'string'
+            }
+          },
+          required: ['tenantId', 'supportLanguage', 'defaultLanguage']
+        }
+      }
+    },
+    async request => {
+      return services.tenant.saveLanguages(request.body);
+    }
+  );
+
+  fastify.post(
     `${options.prefix}/admin/set-status`,
     {
       onRequest: [userAuthenticate, adminAuthenticate],
@@ -635,7 +667,7 @@ module.exports = fp(async (fastify, options) => {
           type: 'object',
           properties: {
             tenantId: { type: 'string' },
-            source: { type: 'string', enum: ['wecom', 'dingtalk'] },
+            source: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] },
             syncInterval: { type: 'string', enum: ['daily', 'weekly', 'monthly', 'yearly', 'off'] },
             targetId: { type: 'string' }
           },
@@ -688,6 +720,117 @@ module.exports = fp(async (fastify, options) => {
     },
     async request => {
       await services.orgSync.triggerSync({ tenantId: request.body.tenantId });
+      return {};
+    }
+  );
+
+  fastify.get(
+    `${options.prefix}/admin/third-login-config`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '获取第三方登录配置列表',
+        query: {
+          type: 'object',
+          properties: {
+            tenantId: { type: 'string' }
+          },
+          required: ['tenantId']
+        }
+      }
+    },
+    async request => {
+      return services.thirdLogin.list({ tenantId: request.query.tenantId });
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/admin/third-login-config-save`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '保存第三方登录配置',
+        body: {
+          type: 'object',
+          properties: {
+            tenantId: { type: 'string' },
+            source: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] },
+            targetId: { type: 'string' }
+          },
+          required: ['tenantId', 'source', 'targetId']
+        }
+      }
+    },
+    async request => {
+      const { tenantId, source, targetId } = request.body;
+      await services.thirdLogin.saveConfig({ tenantId, source, targetId });
+      return {};
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/admin/third-login-config-cancel`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '取消第三方登录配置',
+        body: {
+          type: 'object',
+          properties: {
+            tenantId: { type: 'string' },
+            source: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] }
+          },
+          required: ['tenantId', 'source']
+        }
+      }
+    },
+    async request => {
+      await services.thirdLogin.cancelConfig({ tenantId: request.body.tenantId, source: request.body.source });
+      return {};
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/admin/third-login-bind-token`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '生成第三方登录绑定链接',
+        body: {
+          type: 'object',
+          properties: {
+            tenantId: { type: 'string' },
+            id: { type: 'string' },
+            platform: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] }
+          },
+          required: ['tenantId', 'id']
+        }
+      }
+    },
+    async request => {
+      const { tenantId, id, platform } = request.body;
+      return services.user.thirdLoginBindToken({ tenantId, id, platform });
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/admin/third-login-unbind`,
+    {
+      onRequest: [userAuthenticate, adminAuthenticate],
+      schema: {
+        summary: '解除第三方登录绑定',
+        body: {
+          type: 'object',
+          properties: {
+            tenantId: { type: 'string' },
+            id: { type: 'string' }
+          },
+          required: ['tenantId', 'id']
+        }
+      }
+    },
+    async request => {
+      await services.user.thirdLoginUnbind({ tenantId: request.body.tenantId, id: request.body.id });
       return {};
     }
   );

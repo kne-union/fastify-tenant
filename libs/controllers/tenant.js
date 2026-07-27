@@ -15,12 +15,15 @@ module.exports = fp(async (fastify, options) => {
           properties: {
             platform: {
               type: 'string',
-              enum: ['wecom', 'dingtalk']
+              enum: ['wecom', 'dingtalk', 'beisen']
             },
             tenantId: {
               type: 'string'
             },
             redirect: {
+              type: 'string'
+            },
+            bindToken: {
               type: 'string'
             }
           },
@@ -46,7 +49,10 @@ module.exports = fp(async (fastify, options) => {
             },
             platform: {
               type: 'string',
-              enum: ['wecom', 'dingtalk']
+              enum: ['wecom', 'dingtalk', 'beisen']
+            },
+            bindToken: {
+              type: 'string'
             }
           },
           required: ['tenantId'],
@@ -56,6 +62,113 @@ module.exports = fp(async (fastify, options) => {
     },
     async request => {
       return services.user.getThirdLoginResult(request.body);
+    }
+  );
+
+  fastify.get(
+    `${options.prefix}/third-login-config`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '获取第三方登录配置列表'
+      }
+    },
+    async request => {
+      return services.thirdLogin.list({ tenantId: request.tenantUserInfo.tenantId });
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/third-login-config-save`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '保存第三方登录配置',
+        body: {
+          type: 'object',
+          properties: {
+            source: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] },
+            targetId: { type: 'string' }
+          },
+          required: ['source', 'targetId']
+        }
+      }
+    },
+    async request => {
+      const { source, targetId } = request.body;
+      await services.thirdLogin.saveConfig({ tenantId: request.tenantUserInfo.tenantId, source, targetId });
+      return {};
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/third-login-config-cancel`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '取消第三方登录配置',
+        body: {
+          type: 'object',
+          properties: {
+            source: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] }
+          },
+          required: ['source']
+        }
+      }
+    },
+    async request => {
+      await services.thirdLogin.cancelConfig({ tenantId: request.tenantUserInfo.tenantId, source: request.body.source });
+      return {};
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/third-login-bind-token`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '生成第三方登录绑定链接',
+        body: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            platform: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] }
+          }
+        }
+      }
+    },
+    async request => {
+      const { id, platform } = request.body;
+      return services.user.thirdLoginBindToken({
+        tenantId: request.tenantUserInfo.tenantId,
+        id,
+        platform,
+        tenantUserId: request.tenantUserInfo.id
+      });
+    }
+  );
+
+  fastify.post(
+    `${options.prefix}/third-login-unbind`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '解除第三方登录绑定',
+        body: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' }
+          }
+        }
+      }
+    },
+    async request => {
+      await services.user.thirdLoginUnbind({
+        tenantId: request.tenantUserInfo.tenantId,
+        id: request.body.id,
+        tenantUserId: request.tenantUserInfo.id
+      });
+      return {};
     }
   );
 
@@ -161,6 +274,19 @@ module.exports = fp(async (fastify, options) => {
         company: request.tenantUserInfo.tenant.tenantCompany,
         tenant: request.tenantUserInfo.tenant
       };
+    }
+  );
+
+  fastify.get(
+    `${options.prefix}/languages`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '获取当前租户系统语言设置'
+      }
+    },
+    async request => {
+      return services.tenant.getLanguages({ tenantId: request.tenantUserInfo.tenantId });
     }
   );
 
@@ -466,7 +592,7 @@ module.exports = fp(async (fastify, options) => {
         body: {
           type: 'object',
           properties: {
-            source: { type: 'string', enum: ['wecom', 'dingtalk'] },
+            source: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] },
             syncInterval: { type: 'string', enum: ['daily', 'weekly', 'monthly', 'yearly', 'off'] },
             targetId: { type: 'string' }
           },
@@ -680,6 +806,57 @@ module.exports = fp(async (fastify, options) => {
       return await services.user.list(
         Object.assign({}, request.query, {
           tenantId: request.tenantUserInfo.tenantId
+        })
+      );
+    }
+  );
+
+  fastify.get(
+    `${options.prefix}/user-list-by-data-permission`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '租户用户列表（数据权限）',
+        description: '租户管理员可见全部；普通用户默认本部门及以下（orgSubtree）。传入 moduleCode 或 permissionCode 时合并对应模块共享组数据来源。',
+        query: {
+          type: 'object',
+          properties: {
+            filter: {
+              type: 'object'
+            },
+            perPage: {
+              type: 'number',
+              default: 20
+            },
+            currentPage: {
+              type: 'number',
+              default: 1
+            },
+            type: {
+              type: 'string',
+              enum: ['self', 'owner', 'org', 'orgSubtree'],
+              default: 'orgSubtree',
+              description: '数据范围，默认 orgSubtree（本部门及以下）'
+            },
+            moduleCode: {
+              type: 'string',
+              description: '非空时合并该模块下共享组数据来源'
+            },
+            permissionCode: {
+              type: 'string',
+              description: '功能权限码：校验菜单权限，并用于定位模块以合并共享组'
+            }
+          }
+        }
+      }
+    },
+    async request => {
+      return await services.user.listByDataPermission(
+        Object.assign({}, request.query, {
+          tenantId: request.tenantUserInfo.tenantId,
+          currentTenantUserId: request.tenantUserInfo.id,
+          roleDetails: request.tenantUserInfo.roleDetails,
+          permissions: request.tenantUserInfo.permissions
         })
       );
     }

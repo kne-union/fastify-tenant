@@ -1,4 +1,5 @@
 const fp = require('fastify-plugin');
+const { mergeThirdLoginTypeOptions } = require('../utils/thirdLoginBinding');
 const { getSequelize } = require('../utils/sequelize');
 const { ROW_TYPE_ORG, ROW_TYPE_USER, normalizeImportRows } = require('../utils/orgImportRows');
 const { orgLevelKey, collectOrgIdsByName } = require('../utils/orgLevel');
@@ -469,7 +470,14 @@ module.exports = fp(async (fastify, options) => {
 
             if (tenantUser) {
               // 更新
-              const updateData = { name, status: 'open', ...rest };
+              const updateData = {
+                name,
+                status: 'open',
+                // org-sync should only sync org/user data; third-party id binding happens in third-login-result
+                // after OAuth verification.
+                options: mergeThirdLoginTypeOptions(tenantUser.options, syncSource),
+                ...rest
+              };
               if (orgId) {
                 const existingOrgIds = Array.isArray(tenantUser.tenantOrgIds) ? tenantUser.tenantOrgIds : [];
                 if (!existingOrgIds.includes(orgId)) {
@@ -490,6 +498,8 @@ module.exports = fp(async (fastify, options) => {
                 synced: true,
                 syncSource,
                 sourceId,
+                // Only store the channel type; keep sourceId binding empty until OAuth/bind.
+                options: mergeThirdLoginTypeOptions(null, syncSource),
                 transaction: trans,
                 ...rest
               });

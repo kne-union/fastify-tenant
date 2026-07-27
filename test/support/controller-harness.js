@@ -16,10 +16,15 @@ function createControllerServices(overrides = {}) {
       save: noop,
       remove: noop,
       list: async () => ({ pageData: [], totalCount: 0 }),
+      listByDataPermission: async () => ({ pageData: [], totalCount: 0 }),
       setStatus: noop,
       inviteToken: async () => ({ token: 't' }),
       sendInviteMessage: noop,
-      permissionList: async () => ({ codes: [] })
+      permissionList: async () => ({ codes: [] }),
+      getThirdLoginUrl: async () => ({ redirectUrl: '/third-login-result', companyName: 'C', logo: null, configProps: {} }),
+      getThirdLoginResult: async () => ({ token: 'jwt', platform: 'wecom', redirectUrl: '/tenant' }),
+      thirdLoginBindToken: async () => ({ token: 'bt', url: '/third-login', platform: 'wecom' }),
+      thirdLoginUnbind: noop
     },
     company: {
       detail: async () => ({ id: 'c1' }),
@@ -46,6 +51,11 @@ function createControllerServices(overrides = {}) {
       detail: async () => ({ id: 't1' }),
       create: async b => Object.assign({ id: 't1' }, b),
       save: async b => b,
+      saveLanguages: async b => ({
+        supportLanguage: b.supportLanguage || ['zh-CN'],
+        defaultLanguage: b.defaultLanguage || 'zh-CN'
+      }),
+      getLanguages: async () => ({ supportLanguage: ['zh-CN'], defaultLanguage: 'zh-CN' }),
       setStatus: noop,
       remove: noop
     },
@@ -78,6 +88,19 @@ function createControllerServices(overrides = {}) {
         type: 'org',
         dataScopeOpen: true
       })
+    },
+    thirdLogin: {
+      list: async () => ({ sourceOptions: [], list: [] }),
+      getConfig: async () => ({ enabled: false, source: null, targetId: null, props: {}, sourceOptions: [] }),
+      saveConfig: noop,
+      cancelConfig: noop
+    },
+    orgSync: {
+      getConfig: async () => ({ enabled: false, source: null, syncInterval: null, targetId: null, lastSyncTime: null, syncSupported: false, sourceOptions: [] }),
+      saveConfig: noop,
+      cancelConfig: noop,
+      triggerSync: noop,
+      sendMessage: async () => ({ count: 0 })
     }
   };
   return Object.assign(base, overrides);
@@ -87,12 +110,21 @@ function authNoop() {
   return async () => {};
 }
 
+/** Controllers that use authenticate.user expect request.userInfo to be set. */
+function authUser() {
+  return async request => {
+    request.userInfo = { id: 'user-1' };
+  };
+}
+
 async function registerTenantUserController(fastify, name, prefix, services) {
   fastify.decorate(name, {
     services,
     authenticate: {
+      user: authUser(),
       tenantUser: async request => {
         request.tenantUserInfo = {
+          id: 'tu-1',
           tenantId: 'tid-1',
           tenant: { id: 'tid-1', name: 'Tn', tenantCompany: { name: 'Co' } }
         };
@@ -102,7 +134,7 @@ async function registerTenantUserController(fastify, name, prefix, services) {
   await fastify.register(require('../../libs/controllers/tenant.js'), {
     name,
     prefix,
-    getUserAuthenticate: authNoop
+    getUserAuthenticate: authUser
   });
 }
 
@@ -120,6 +152,7 @@ async function registerTenantPermissionController(fastify, name, prefix, service
   fastify.decorate(name, {
     services,
     authenticate: {
+      user: authUser(),
       tenantUser: async request => {
         request.tenantUserInfo = { tenantId: 'tid-1' };
       }
@@ -128,7 +161,7 @@ async function registerTenantPermissionController(fastify, name, prefix, service
   await fastify.register(require('../../libs/controllers/tenant-permission.js'), {
     name,
     prefix,
-    getUserAuthenticate: authNoop
+    getUserAuthenticate: authUser
   });
 }
 
@@ -146,6 +179,7 @@ async function registerTenantSharedGroupController(fastify, name, prefix, servic
   fastify.decorate(name, {
     services,
     authenticate: {
+      user: authUser(),
       tenantUser: async request => {
         request.tenantUserInfo = { tenantId: 'tid-1', id: 'tu-1' };
       }
@@ -154,7 +188,7 @@ async function registerTenantSharedGroupController(fastify, name, prefix, servic
   await fastify.register(require('../../libs/controllers/tenant-shared-group.js'), {
     name,
     prefix,
-    getUserAuthenticate: authNoop
+    getUserAuthenticate: authUser
   });
 }
 
