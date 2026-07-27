@@ -213,6 +213,12 @@ GET `/api/tenant/getUserInfo`
 
 无参数。返回 `{ userInfo, tenantUserInfo, company, tenant }`。
 
+#### 获取当前租户系统语言设置
+
+GET `/api/tenant/languages`
+
+无参数。返回 `{ supportLanguage: string[], defaultLanguage: string }`（取自当前登录租户）。
+
 #### 获取当前用户数据权限（可见租户用户）
 
 GET `/api/tenant/data-permission`
@@ -398,6 +404,21 @@ GET `/api/tenant/user-list`
 | filter | query | object | 否 | - | 过滤条件 |
 | perPage | query | number | 否 | 20 | 每页数量 |
 | currentPage | query | number | 否 | 1 | 当前页码 |
+
+#### 租户用户列表（数据权限）
+
+GET `/api/tenant/user-list-by-data-permission`
+
+带数据权限过滤的用户列表：租户管理员（系统角色 `admin`）可见全部；普通用户默认仅本部门及以下（`orgSubtree`）。传入非空 `moduleCode`，或传入 `permissionCode`（会校验菜单权限并解析所属模块）时，额外合并该模块共享组数据来源。
+
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|------|--------|------|
+| filter | query | object | 否 | - | 过滤条件（同 user-list） |
+| perPage | query | number | 否 | 20 | 每页数量 |
+| currentPage | query | number | 否 | 1 | 当前页码 |
+| type | query | string | 否 | orgSubtree | 数据范围：`self` / `owner` / `org` / `orgSubtree` |
+| moduleCode | query | string | 否 | - | 非空时合并该模块下共享组数据来源 |
+| permissionCode | query | string | 否 | - | 功能权限码：校验当前用户是否拥有该权限，并用于定位模块以合并共享组 |
 
 #### 修改租户用户状态
 
@@ -645,6 +666,20 @@ POST `/api/tenant/admin/save`
 | defaultLanguage | body | string | 否 | 默认语言 |
 | serviceStartTime | body | string | 否 | 服务开始时间 |
 | serviceEndTime | body | string | 否 | 服务结束时间 |
+
+#### 保存租户系统语言设置
+
+POST `/api/tenant/admin/save-languages`
+
+仅管理员可写。更新租户 `supportLanguage` / `defaultLanguage`。
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| tenantId | body | string | 是 | 租户 ID |
+| supportLanguage | body | array\<string\> | 是 | 支持语言列表，至少 1 项 |
+| defaultLanguage | body | string | 是 | 默认语言，必须在 supportLanguage 内 |
+
+返回 `{ supportLanguage, defaultLanguage }`。
 
 #### 设置租户状态
 

@@ -1,8 +1,9 @@
 const fp = require('fastify-plugin');
 const get = require('lodash/get');
+const { resolveLinkedTargetProps } = require('../utils/resolveLinkedTargetProps');
 
 module.exports = fp(async (fastify, options) => {
-  const { models } = fastify[options.name];
+  const { models, services } = fastify[options.name];
 
   const syncSupported = typeof options.syncOrgTask === 'function';
 
@@ -24,17 +25,7 @@ module.exports = fp(async (fastify, options) => {
       return { enabled: false, source: null, syncInterval: null, targetId: null, lastSyncTime: null, syncSupported, sourceOptions };
     }
     const tenantSetting = await fastify.tenant.services.setting.detail({ tenantId });
-    const tenantProps = record.config.targetId
-      ? Object.fromEntries(
-          get(tenantSetting.getDataValue('argsValue'), record.config.targetId, '')
-            ?.split(';')
-            .filter(pair => pair.includes(':'))
-            .map(pair => {
-              const [key, ...rest] = pair.split(':');
-              return [key.trim(), rest.join(':').trim()];
-            }) || []
-        )
-      : {};
+    const tenantProps = resolveLinkedTargetProps(tenantSetting, record.config.targetId);
 
     return {
       enabled: true,
@@ -65,6 +56,8 @@ module.exports = fp(async (fastify, options) => {
         config: { syncInterval, targetId }
       });
     }
+    await services.thirdLogin.saveConfig({ tenantId, source, targetId });
+
     if (typeof options.syncOrgTask === 'function') {
       await triggerSync({ tenantId });
     }

@@ -50,6 +50,37 @@ module.exports = fp(async (fastify, options) => {
     return tenant;
   };
 
+  const saveLanguages = async ({ tenantId, supportLanguage, defaultLanguage }) => {
+    if (!Array.isArray(supportLanguage) || supportLanguage.length === 0) {
+      throw new Error('支持语言列表不能为空');
+    }
+    const languages = supportLanguage.map(item => String(item)).filter(Boolean);
+    if (languages.length === 0) {
+      throw new Error('支持语言列表不能为空');
+    }
+    const defaultLang = defaultLanguage ? String(defaultLanguage) : languages[0];
+    if (!languages.includes(defaultLang)) {
+      throw new Error('默认语言必须在支持语言列表中');
+    }
+    const tenant = await detail({ id: tenantId, withTenantSetting: false });
+    await tenant.update({
+      supportLanguage: languages,
+      defaultLanguage: defaultLang
+    });
+    return {
+      supportLanguage: languages,
+      defaultLanguage: defaultLang
+    };
+  };
+
+  const getLanguages = async ({ tenantId }) => {
+    const tenant = await detail({ id: tenantId, withTenantSetting: false });
+    return {
+      supportLanguage: tenant.supportLanguage || [],
+      defaultLanguage: tenant.defaultLanguage || ''
+    };
+  };
+
   const list = async ({ perPage, currentPage, filter = {} }) => {
     const whereQuery = {};
     ['status'].forEach(name => {
@@ -123,6 +154,6 @@ module.exports = fp(async (fastify, options) => {
   };
 
   Object.assign(fastify[options.name].services, {
-    tenant: { create, save, list, detail, setStatus, remove, getToken, parseToken }
+    tenant: { create, save, saveLanguages, getLanguages, list, detail, setStatus, remove, getToken, parseToken }
   });
 });

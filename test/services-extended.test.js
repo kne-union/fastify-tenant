@@ -49,6 +49,43 @@ describe('services 扩展（tenant / role / user / company / setting）', () => 
     assert.equal(parsed.tenant.id, tenantId);
   });
 
+  it('tenant.saveLanguages / getLanguages', async () => {
+    const saved = await ctx.ns.services.tenant.saveLanguages({
+      tenantId,
+      supportLanguage: ['zh-CN', 'en-US'],
+      defaultLanguage: 'en-US'
+    });
+    assert.deepEqual(saved.supportLanguage, ['zh-CN', 'en-US']);
+    assert.equal(saved.defaultLanguage, 'en-US');
+    const languages = await ctx.ns.services.tenant.getLanguages({ tenantId });
+    assert.deepEqual(languages.supportLanguage, ['zh-CN', 'en-US']);
+    assert.equal(languages.defaultLanguage, 'en-US');
+  });
+
+  it('tenant.saveLanguages 默认语言必须在支持列表中', async () => {
+    await assert.rejects(
+      () =>
+        ctx.ns.services.tenant.saveLanguages({
+          tenantId,
+          supportLanguage: ['zh-CN'],
+          defaultLanguage: 'en-US'
+        }),
+      /默认语言必须在支持语言列表中/
+    );
+  });
+
+  it('tenant.saveLanguages 支持语言列表不能为空', async () => {
+    await assert.rejects(
+      () =>
+        ctx.ns.services.tenant.saveLanguages({
+          tenantId,
+          supportLanguage: [],
+          defaultLanguage: 'zh-CN'
+        }),
+      /支持语言列表不能为空/
+    );
+  });
+
   it('role.list 支持 filter.type 与 filter.keyword', async () => {
     await ctx.ns.services.role.create({
       tenantId,
@@ -252,6 +289,97 @@ describe('services 扩展（tenant / role / user / company / setting）', () => 
     assert.ok(ids.has(userInChild.id));
     assert.ok(ids.has(userInParent.id));
     assert.ok(!ids.has(userInOther.id));
+
+    await ctx.ns.services.user.remove({ tenantId, id: userInChild.id });
+    await ctx.ns.services.user.remove({ tenantId, id: userInParent.id });
+    await ctx.ns.services.user.remove({ tenantId, id: userInOther.id });
+    await ctx.ns.services.org.remove({ tenantId, id: child.id });
+    await ctx.ns.services.org.remove({ tenantId, id: parent.id });
+    await ctx.ns.services.org.remove({ tenantId, id: otherOrg.id });
+  });
+
+  it('user.listByDataPermission 管理员看全部，普通用户按可见 ids 过滤', async () => {
+    const parent = await ctx.ns.services.org.create({ tenantId, name: 'ScopeParent', parentId: null });
+    const child = await ctx.ns.services.org.create({ tenantId, name: 'ScopeChild', parentId: parent.id });
+    const otherOrg = await ctx.ns.services.org.create({ tenantId, name: 'ScopeOther', parentId: null });
+
+    const userInChild = await ctx.ns.services.user.create({
+      tenantId,
+      name: 'scope-child-user',
+      email: 'scope-child@test.com',
+      phone: '',
+      tenantOrgIds: [child.id],
+      roles: [],
+      description: ''
+    });
+    const userInParent = await ctx.ns.services.user.create({
+      tenantId,
+      name: 'scope-parent-user',
+      email: 'scope-parent@test.com',
+      phone: '',
+      tenantOrgIds: [parent.id],
+      roles: [],
+      description: ''
+    });
+    const userInOther = await ctx.ns.services.user.create({
+      tenantId,
+      name: 'scope-other-user',
+      email: 'scope-other@test.com',
+      phone: '',
+      tenantOrgIds: [otherOrg.id],
+      roles: [],
+      description: ''
+    });
+
+    const adminList = await ctx.ns.services.user.listByDataPermission({
+      tenantId,
+      currentTenantUserId: userInParent.id,
+      roleDetails: [{ type: 'system', code: 'admin' }],
+      filter: {},
+      perPage: 100,
+      currentPage: 1
+    });
+    const adminIds = new Set(adminList.pageData.map(row => row.id));
+    assert.ok(adminIds.has(userInChild.id));
+    assert.ok(adminIds.has(userInParent.id));
+    assert.ok(adminIds.has(userInOther.id));
+
+    const originalDataScope = ctx.ns.services.dataScope;
+    ctx.ns.services.dataScope = {
+      resolveVisibleTenantUserIds: async () => [userInChild.id, userInParent.id]
+    };
+    try {
+      const scoped = await ctx.ns.services.user.listByDataPermission({
+        tenantId,
+        currentTenantUserId: userInParent.id,
+        roleDetails: [{ type: 'custom', code: 'member' }],
+        moduleCode: 'setting:permission:shared-group',
+        filter: {},
+        perPage: 100,
+        currentPage: 1
+      });
+      const scopedIds = new Set(scoped.pageData.map(row => row.id));
+      assert.ok(scopedIds.has(userInChild.id));
+      assert.ok(scopedIds.has(userInParent.id));
+      assert.ok(!scopedIds.has(userInOther.id));
+
+      await assert.rejects(
+        () =>
+          ctx.ns.services.user.listByDataPermission({
+            tenantId,
+            currentTenantUserId: userInParent.id,
+            roleDetails: [{ type: 'custom', code: 'member' }],
+            permissions: ['setting:user-manager:view'],
+            permissionCode: 'setting:org:view',
+            filter: {},
+            perPage: 10,
+            currentPage: 1
+          }),
+        /无权访问/
+      );
+    } finally {
+      ctx.ns.services.dataScope = originalDataScope;
+    }
 
     await ctx.ns.services.user.remove({ tenantId, id: userInChild.id });
     await ctx.ns.services.user.remove({ tenantId, id: userInParent.id });

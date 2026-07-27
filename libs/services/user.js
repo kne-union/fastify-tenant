@@ -7,7 +7,9 @@ const { collectOrgSubtreeIds } = require('../utils/dataScopeOrgIds');
 const { buildOrgNamePath } = require('../utils/orgPath');
 const { normalizeTenantUserStatus } = require('../utils/normalizeTenantUserStatus');
 const { pickOrgIdsFromInput, buildUserOrgMembershipWhere, attachUserOrgDisplay, getUserOrgIds } = require('../utils/tenantOrgIds');
+const findDataScopeByPermissionCode = require('../utils/findDataScopeByPermissionCode');
 const get = require('lodash/get');
+const { mergeThirdLoginOptions, clearThirdLoginOptions, findUserByThirdLoginBinding, findUnboundUserForFirstMatch, assertThirdLoginBindingConflict } = require('../utils/thirdLoginBinding');
 
 module.exports = fp(async (fastify, options) => {
   const { models, services } = fastify[options.name];
@@ -285,7 +287,14 @@ module.exports = fp(async (fastify, options) => {
     }
 
     const id = filter.id != null ? String(filter.id).trim() : '';
-    if (id) {
+    const ids = toFilterArray(filter.ids)
+      .map(item => String(item).trim())
+      .filter(Boolean);
+    if (id && ids.length) {
+      whereQuery.id = { [Op.in]: [...new Set([id, ...ids])] };
+    } else if (ids.length) {
+      whereQuery.id = { [Op.in]: [...new Set(ids)] };
+    } else if (id) {
       whereQuery.id = id;
     }
 
@@ -324,6 +333,72 @@ module.exports = fp(async (fastify, options) => {
       }),
       totalCount: count
     };
+  };
+
+  const isTenantAdmin = ({ roleDetails } = {}) => {
+    return (Array.isArray(roleDetails) ? roleDetails : []).some(role => role && role.type === 'system' && role.code === 'admin');
+  };
+
+  /**
+   * 带数据权限的租户用户列表：
+   * - 租户管理员：同 list，可见全部
+   * - 普通用户：默认本部门及以下（orgSubtree），可选 moduleCode / permissionCode 合并共享组数据来源
+   */
+  const listByDataPermission = async ({ tenantId, currentTenantUserId, roleDetails, permissions: userPermissionCodes, filter = {}, perPage, currentPage, type, moduleCode, permissionCode }) => {
+    if (isTenantAdmin({ roleDetails })) {
+      return list({ tenantId, filter, perPage, currentPage });
+    }
+
+    let resolvedModuleCode = moduleCode != null && String(moduleCode).trim() ? String(moduleCode).trim() : null;
+    const permissionCodeTrimmed = permissionCode != null && String(permissionCode).trim() ? String(permissionCode).trim() : null;
+
+    if (permissionCodeTrimmed) {
+      const codes = Array.isArray(userPermissionCodes) ? userPermissionCodes : [];
+      if (!codes.includes(permissionCodeTrimmed)) {
+        throw new Forbidden('无权访问');
+      }
+      if (!resolvedModuleCode) {
+        const found = findDataScopeByPermissionCode(fastify[options.name].permissions, permissionCodeTrimmed);
+        if (found?.moduleCode) {
+          resolvedModuleCode = found.moduleCode;
+        }
+      }
+    }
+
+    const scopeType = type != null && String(type).trim() ? String(type).trim() : 'orgSubtree';
+    const tenantUserIds = await services.dataScope.resolveVisibleTenantUserIds({
+      tenantId,
+      currentTenantUserId,
+      type: scopeType,
+      moduleCode: resolvedModuleCode
+    });
+
+    if (!tenantUserIds.length) {
+      return { pageData: [], totalCount: 0 };
+    }
+
+    const visibleSet = new Set(tenantUserIds.map(String));
+    const requestedId = filter.id != null ? String(filter.id).trim() : '';
+    const requestedIds = (Array.isArray(filter.ids) ? filter.ids : filter.ids != null && filter.ids !== '' ? [filter.ids] : []).map(item => String(item).trim()).filter(Boolean);
+
+    let scopedIds = tenantUserIds;
+    if (requestedId || requestedIds.length) {
+      const want = new Set([...(requestedId ? [requestedId] : []), ...requestedIds]);
+      scopedIds = [...want].filter(id => visibleSet.has(id));
+      if (!scopedIds.length) {
+        return { pageData: [], totalCount: 0 };
+      }
+    }
+
+    const scopedFilter = Object.assign({}, filter, { ids: scopedIds });
+    delete scopedFilter.id;
+
+    return list({
+      tenantId,
+      filter: scopedFilter,
+      perPage,
+      currentPage
+    });
   };
 
   const setStatus = async ({ tenantId, id, status }) => {
@@ -448,22 +523,128 @@ module.exports = fp(async (fastify, options) => {
     return enrichTenantUserInfo(tenantUser);
   };
 
-  const getThirdLoginUrl = async ({ tenantId, platform, redirect }) => {
+  const applyThirdLoginProfile = (user, thirdLoginResult) => {
+    ['avatar', 'gender', 'description', 'name', 'email', 'phone'].forEach(name => {
+      if (thirdLoginResult[name]) {
+        user[name] = thirdLoginResult[name];
+      }
+    });
+  };
+
+  const buildThirdLoginResponse = (user, thirdLoginResult, props) => {
+    return {
+      token: fastify.jwt.sign({ payload: { id: user.id, tenantId: user.tenantId } }, { expiresIn: '7d' }),
+      platform: thirdLoginResult.platform,
+      redirectUrl: thirdLoginResult.redirect || props.redirect || '/tenant',
+      name: user.name,
+      avatar: user.avatar,
+      email: user.email,
+      phone: user.phone
+    };
+  };
+
+  const resolveThirdLoginUser = async (props, thirdLoginResult) => {
+    const { tenantId } = props;
+    const platform = thirdLoginResult.platform;
+
+    if (props.bindToken) {
+      let payload;
+      try {
+        payload = fastify.jwt.verify(props.bindToken).payload;
+      } catch (e) {
+        throw new Error('绑定链接无效或已过期');
+      }
+      if (payload.purpose !== 'third-login-bind' || String(payload.tenantId) !== String(tenantId)) {
+        throw new Error('绑定链接无效');
+      }
+      if (payload.platform && payload.platform !== platform) {
+        throw new Error('绑定平台与登录平台不一致');
+      }
+
+      const thirdLoginConfig = await services.thirdLogin.getConfig({ tenantId, type: platform });
+      if (!thirdLoginConfig.enabled) {
+        throw new Error('未配置该渠道的第三方登录');
+      }
+
+      const targetUser = await models.user.findOne({
+        where: { id: payload.id, tenantId, status: 'open' }
+      });
+      if (!targetUser) {
+        throw new Error('用户不存在或已关闭');
+      }
+
+      await assertThirdLoginBindingConflict({
+        models,
+        tenantId,
+        platform,
+        sourceId: thirdLoginResult.id,
+        excludeUserId: targetUser.id
+      });
+
+      targetUser.options = mergeThirdLoginOptions(targetUser.options, platform, thirdLoginResult.id);
+      applyThirdLoginProfile(targetUser, thirdLoginResult);
+      await targetUser.save();
+      return targetUser;
+    }
+
+    const thirdLoginConfig = await services.thirdLogin.getConfig({ tenantId, type: platform });
+    if (!thirdLoginConfig.enabled) {
+      throw new Error('未配置该渠道的第三方登录');
+    }
+
+    let user = await findUserByThirdLoginBinding({
+      models,
+      tenantId,
+      platform,
+      sourceId: thirdLoginResult.id
+    });
+
+    if (user) {
+      applyThirdLoginProfile(user, thirdLoginResult);
+      await user.save();
+      return user;
+    }
+
+    user = await findUnboundUserForFirstMatch({
+      models,
+      tenantId,
+      phone: thirdLoginResult.phone,
+      email: thirdLoginResult.email,
+      platform
+    });
+    if (!user) {
+      throw new Error('用户不存在或未绑定');
+    }
+
+    await assertThirdLoginBindingConflict({
+      models,
+      tenantId,
+      platform,
+      sourceId: thirdLoginResult.id,
+      excludeUserId: user.id
+    });
+
+    user.options = mergeThirdLoginOptions(user.options, platform, thirdLoginResult.id);
+    applyThirdLoginProfile(user, thirdLoginResult);
+    await user.save();
+    return user;
+  };
+
+  const getThirdLoginUrl = async ({ tenantId, platform, redirect, bindToken }) => {
     const tenant = await services.tenant.detail({ id: tenantId });
     if (typeof options?.thirdLogin?.getThirdLoginUrl !== 'function') {
       throw new Error('租户不支持第三方登录');
     }
 
-    const config = await fastify.tenant.services.orgSync.getConfig({ tenantId });
+    const config = await services.thirdLogin.getConfig({ tenantId, type: platform });
     if (!config.enabled) {
-      throw new Error('未找到有效的组织关联配置');
-    }
-
-    if (platform && config.source && config.source !== platform) {
-      throw new Error(`平台 ${platform} 与租户组织关联来源 ${config.source} 不一致`);
+      throw new Error('未找到有效的第三方登录配置');
     }
 
     const configProps = get(config, 'props');
+
+    const redirectQuery = redirect ? encodeURIComponent(redirect) : '';
+    const bindTokenQuery = bindToken ? `&bindToken=${encodeURIComponent(bindToken)}` : '';
 
     const url =
       platform === 'dingtalk'
@@ -471,9 +652,9 @@ module.exports = fp(async (fastify, options) => {
             if (!(configProps.corpId && (configProps.client_id || configProps.clientId))) {
               throw new Error('租户参数配置不完整');
             }
-            return `/third-login-result?platform=dingtalk&code=200&message=success&redirect=${redirect}&tenantId=${tenantId}&corpId=${configProps.corpId}&clientId=${configProps.client_id || configProps.clientId}`;
+            return `/third-login-result?platform=dingtalk&code=200&message=success&redirect=${redirectQuery}&tenantId=${tenantId}&corpId=${configProps.corpId}&clientId=${configProps.client_id || configProps.clientId}${bindTokenQuery}`;
           })()
-        : await options.thirdLogin.getThirdLoginUrl({ tenant, platform, redirect });
+        : await options.thirdLogin.getThirdLoginUrl({ tenant, platform, redirect, bindToken });
 
     return {
       companyName: tenant.company?.name,
@@ -491,37 +672,64 @@ module.exports = fp(async (fastify, options) => {
       throw new Error('租户不支持第三方登录');
     }
     const thirdLoginResult = await options.thirdLogin.getThirdLoginResult(props);
+    const user = await resolveThirdLoginUser(props, thirdLoginResult);
+    return buildThirdLoginResponse(user, thirdLoginResult, props);
+  };
 
-    const user = await models.user.findOne({
-      where: {
-        tenantId: props.tenantId,
-        synced: true,
-        sourceId: thirdLoginResult.id,
-        syncSource: thirdLoginResult.platform,
-        status: 'open'
-      }
-    });
-    if (!user) {
-      throw new Error('用户不存在或已关闭');
+  const thirdLoginBindToken = async ({ tenantId, id, platform, tenantUserId }) => {
+    const targetUserId = id || tenantUserId;
+    if (!targetUserId) {
+      throw new Error('用户ID不能为空');
     }
 
-    ['avatar', 'gender', 'description', 'name', 'email', 'phone'].forEach(name => {
-      if (thirdLoginResult[name]) {
-        user[name] = thirdLoginResult[name];
-      }
-    });
+    await detail({ tenantId, id: targetUserId });
 
-    await user.save();
+    let resolvedPlatform = platform;
+    if (!resolvedPlatform) {
+      const { list: channels } = await services.thirdLogin.list({ tenantId });
+      if (channels.length === 1) {
+        resolvedPlatform = channels[0].source;
+      } else {
+        throw new Error('请指定第三方登录平台');
+      }
+    }
+
+    const config = await services.thirdLogin.getConfig({ tenantId, type: resolvedPlatform });
+    if (!config.enabled) {
+      throw new Error('未配置该渠道的第三方登录');
+    }
+
+    const token = fastify.jwt.sign(
+      {
+        payload: {
+          purpose: 'third-login-bind',
+          id: targetUserId,
+          tenantId,
+          platform: resolvedPlatform
+        }
+      },
+      { expiresIn: '24h' }
+    );
+
+    const url = `${fastify.config.ORIGIN}/third-login?platform=${resolvedPlatform}&tenantId=${tenantId}&bindToken=${encodeURIComponent(token)}`;
 
     return {
-      token: fastify.jwt.sign({ payload: { id: user.id, tenantId: user.tenantId } }, { expiresIn: '7d' }),
-      platform: thirdLoginResult.platform,
-      redirectUrl: thirdLoginResult.redirect || props.redirect || '/tenant',
-      name: user.name,
-      avatar: user.avatar,
-      email: user.email,
-      phone: user.phone
+      token,
+      url,
+      platform: resolvedPlatform
     };
+  };
+
+  const thirdLoginUnbind = async ({ tenantId, id, tenantUserId }) => {
+    const targetUserId = id || tenantUserId;
+    if (!targetUserId) {
+      throw new Error('用户ID不能为空');
+    }
+    const tenantUser = await detail({ tenantId, id: targetUserId });
+    await tenantUser.update({
+      options: clearThirdLoginOptions(tenantUser.options)
+    });
+    return {};
   };
 
   const getThirdLoginTenantUserInfo = async authenticatePayload => {
@@ -545,7 +753,11 @@ module.exports = fp(async (fastify, options) => {
       getThirdLoginTenantUserInfo,
       getThirdLoginUrl,
       getThirdLoginResult,
+      thirdLoginBindToken,
+      thirdLoginUnbind,
       list,
+      listByDataPermission,
+      isTenantAdmin,
       setStatus,
       save,
       join,

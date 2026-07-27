@@ -38,6 +38,7 @@ describe('controllers 全路由冒烟（期望 <500，覆盖 handler 注册）',
       ['GET', `${prefix}/available-list`, {}],
       ['POST', `${prefix}/switch-default-tenant`, { payload: { tenantId: 'tid' } }],
       ['GET', `${prefix}/getUserInfo`, {}],
+      ['GET', `${prefix}/languages`, {}],
       ['GET', `${prefix}/data-permission`, {}],
       ['GET', `${prefix}/data-permission?type=self`, {}],
       ['GET', `${prefix}/data-permission?moduleCode=setting:permission:shared-group`, {}],
@@ -62,10 +63,19 @@ describe('controllers 全路由冒烟（期望 <500，覆盖 handler 注册）',
       ['POST', `${prefix}/user-save`, { payload: { id: '1', name: 'u2' } }],
       ['POST', `${prefix}/user-remove`, { payload: { id: '1' } }],
       ['GET', `${prefix}/user-list`, {}],
+      ['GET', `${prefix}/user-list-by-data-permission`, {}],
+      ['GET', `${prefix}/user-list-by-data-permission?type=orgSubtree&moduleCode=setting:permission:shared-group`, {}],
       ['POST', `${prefix}/user-set-status`, { payload: { id: '1', status: 'open' } }],
       ['GET', `${prefix}/user-invite-token?id=1`, {}],
       ['POST', `${prefix}/send-invite-message`, { payload: { id: '1' } }],
-      ['GET', `${prefix}/custom-component-detail?key=k`, {}]
+      ['GET', `${prefix}/custom-component-detail?key=k`, {}],
+      ['POST', `${prefix}/third-login`, { payload: { platform: 'wecom', tenantId: 't1' } }],
+      ['POST', `${prefix}/third-login-result`, { payload: { platform: 'wecom', tenantId: 't1' } }],
+      ['GET', `${prefix}/third-login-config`, {}],
+      ['POST', `${prefix}/third-login-config-save`, { payload: { source: 'wecom', targetId: 'TARGET_LINKED_X' } }],
+      ['POST', `${prefix}/third-login-config-cancel`, { payload: { source: 'wecom' } }],
+      ['POST', `${prefix}/third-login-bind-token`, { payload: { id: '1', platform: 'wecom' } }],
+      ['POST', `${prefix}/third-login-unbind`, { payload: { id: '1' } }]
     ];
 
     for (const [method, url, extra] of routes) {
@@ -334,6 +344,17 @@ describe('controllers 全路由冒烟（期望 <500，覆盖 handler 注册）',
           }
         }
       ],
+      [
+        'POST',
+        `${prefix}/admin/save-languages`,
+        {
+          payload: {
+            tenantId: 't1',
+            supportLanguage: ['zh-CN', 'en-US'],
+            defaultLanguage: 'zh-CN'
+          }
+        }
+      ],
       ['POST', `${prefix}/admin/set-status`, { payload: { id: '1', status: 'open' } }],
       ['POST', `${prefix}/admin/remove`, { payload: { id: '1' } }],
       ['GET', `${prefix}/admin/company-detail?tenantId=t1`, {}],
@@ -391,7 +412,12 @@ describe('controllers 全路由冒烟（期望 <500，覆盖 handler 注册）',
       ['POST', `${prefix}/admin/user-set-status`, { payload: { tenantId: 't1', id: '1', status: 'open' } }],
       ['GET', `${prefix}/admin/user-permission-list?tenantId=t1&id=1`, {}],
       ['GET', `${prefix}/admin/user-invite-token?tenantId=t1&id=1`, {}],
-      ['POST', `${prefix}/admin/send-invite-message`, { payload: { tenantId: 't1', id: '1' } }]
+      ['POST', `${prefix}/admin/send-invite-message`, { payload: { tenantId: 't1', id: '1' } }],
+      ['GET', `${prefix}/admin/third-login-config?tenantId=t1`, {}],
+      ['POST', `${prefix}/admin/third-login-config-save`, { payload: { tenantId: 't1', source: 'wecom', targetId: 'TARGET_LINKED_X' } }],
+      ['POST', `${prefix}/admin/third-login-config-cancel`, { payload: { tenantId: 't1', source: 'wecom' } }],
+      ['POST', `${prefix}/admin/third-login-bind-token`, { payload: { tenantId: 't1', id: '1', platform: 'wecom' } }],
+      ['POST', `${prefix}/admin/third-login-unbind`, { payload: { tenantId: 't1', id: '1' } }]
     ];
 
     for (const [method, url, extra] of routes) {
