@@ -204,19 +204,24 @@ module.exports = fp(async (fastify, options) => {
 
   /**
    * 数据权限：组织范围 + 可选共享组数据来源，返回可直接并入查询条件的对象。
+   * 租户管理员（system + admin）：allVisible=true，where 为空，不计算 tenantUserIds。
    *
    * @param {{
    *   tenantId: string,
    *   currentTenantUserId: string,
+   *   roleDetails?: Array<{ type?: string, code?: string }>,
    *   scope?: DataScopeType,
    *   type?: DataScopeType,
    *   fieldKey?: string,
    *   moduleCode?: string,
    *   transaction?: import('sequelize').Transaction
    * }} p
-   * @returns {Promise<{ tenantUserIds: string[], where: Record<string, unknown> }>}
+   * @returns {Promise<{ allVisible: boolean, tenantUserIds: string[], where: Record<string, unknown> }>}
    */
-  const buildRowScopeWhere = async ({ tenantId, currentTenantUserId, scope, type, fieldKey, moduleCode, transaction }) => {
+  const buildRowScopeWhere = async ({ tenantId, currentTenantUserId, roleDetails, scope, type, fieldKey, moduleCode, transaction }) => {
+    if (services.user.isTenantAdmin({ roleDetails })) {
+      return { allVisible: true, tenantUserIds: [], where: {} };
+    }
     const tenantUserIds = await resolveVisibleTenantUserIds({
       tenantId,
       currentTenantUserId,
@@ -226,7 +231,7 @@ module.exports = fp(async (fastify, options) => {
       transaction
     });
     const where = buildInWhere(fieldKey, tenantUserIds);
-    return { tenantUserIds, where };
+    return { allVisible: false, tenantUserIds, where };
   };
 
   /**
@@ -282,6 +287,51 @@ module.exports = fp(async (fastify, options) => {
     };
   };
 
+  /**
+   * 数据权限入口（供 HTTP /data-permission）：租户管理员 allVisible=true 且不计算 ids。
+   */
+  const resolveDataPermission = async ({ tenantId, currentTenantUserId, roleDetails, type, moduleCode, transaction }) => {
+    const resolvedModuleCode = moduleCode != null && String(moduleCode).trim() ? String(moduleCode).trim() : null;
+    if (services.user.isTenantAdmin({ roleDetails })) {
+      return { allVisible: true, tenantUserIds: [], type, moduleCode: resolvedModuleCode };
+    }
+    const tenantUserIds = resolvedModuleCode
+      ? await resolveVisibleTenantUserIds({ tenantId, currentTenantUserId, type, moduleCode: resolvedModuleCode, transaction })
+      : await resolveOrgRuleTenantUserIds({ tenantId, currentTenantUserId, type, transaction });
+    return { allVisible: false, tenantUserIds, type, moduleCode: resolvedModuleCode };
+  };
+
+  /**
+   * 按权限码的数据权限入口（供 HTTP /data-permission-by-code）：租户管理员 allVisible=true 且不计算 ids。
+   */
+  const resolveDataPermissionByCode = async ({ tenantId, currentTenantUserId, roleDetails, permissionCode, permissions: permissionsTree, transaction }) => {
+    if (services.user.isTenantAdmin({ roleDetails })) {
+      const tree = permissionsTree || permissions;
+      const found = findDataScopeByPermissionCode(tree, permissionCode);
+      if (!found) {
+        throw new Error(`未找到权限: ${permissionCode}`);
+      }
+      const ds = found.dataScope;
+      const dataScopeOpen = !!(ds && ds.open === true);
+      const scopeType = dataScopeOpen ? normalizeDataScopeType(ds.type, 'self') : 'self';
+      return {
+        allVisible: true,
+        tenantUserIds: [],
+        moduleCode: found.moduleCode,
+        type: scopeType,
+        dataScopeOpen
+      };
+    }
+    const result = await resolveTenantUserIdsByPermissionCode({
+      tenantId,
+      currentTenantUserId,
+      permissionCode,
+      permissions: permissionsTree,
+      transaction
+    });
+    return { ...result, allVisible: false };
+  };
+
   Object.assign(fastify[options.name].services, {
     dataScope: {
       resolveOwnerScopeTenantUserIds,
@@ -289,6 +339,8 @@ module.exports = fp(async (fastify, options) => {
       resolveSharedGroupDataSourceUserIds,
       resolveVisibleTenantUserIds,
       resolveTenantUserIdsByPermissionCode,
+      resolveDataPermission,
+      resolveDataPermissionByCode,
       buildInWhere,
       buildRowScopeWhere
     }

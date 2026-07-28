@@ -9,7 +9,7 @@ const { normalizeTenantUserStatus } = require('../utils/normalizeTenantUserStatu
 const { pickOrgIdsFromInput, buildUserOrgMembershipWhere, attachUserOrgDisplay, getUserOrgIds } = require('../utils/tenantOrgIds');
 const findDataScopeByPermissionCode = require('../utils/findDataScopeByPermissionCode');
 const get = require('lodash/get');
-const { mergeThirdLoginOptions, clearThirdLoginOptions, findUserByThirdLoginBinding, findUnboundUserForFirstMatch, assertThirdLoginBindingConflict } = require('../utils/thirdLoginBinding');
+const { mergeThirdLoginOptions, clearThirdLoginOptions, findUserByThirdLoginBinding, findUserBySyncSourceId, assertThirdLoginBindingConflict, getThirdLoginFromOptions } = require('../utils/thirdLoginBinding');
 
 module.exports = fp(async (fastify, options) => {
   const { models, services } = fastify[options.name];
@@ -592,39 +592,51 @@ module.exports = fp(async (fastify, options) => {
       throw new Error('未配置该渠道的第三方登录');
     }
 
+    const sourceId = String(thirdLoginResult.id);
+
+    // 1) Already bound: options.thirdLogin.platform + sourceId
     let user = await findUserByThirdLoginBinding({
       models,
       tenantId,
       platform,
-      sourceId: thirdLoginResult.id
+      sourceId
     });
 
-    if (user) {
-      applyThirdLoginProfile(user, thirdLoginResult);
-      await user.save();
-      return user;
+    // 2) Default: org-synced userid → user.sourceId + syncSource(platform)
+    if (!user) {
+      user = await findUserBySyncSourceId({
+        models,
+        tenantId,
+        platform,
+        sourceId
+      });
     }
 
-    user = await findUnboundUserForFirstMatch({
-      models,
-      tenantId,
-      phone: thirdLoginResult.phone,
-      email: thirdLoginResult.email,
-      platform
-    });
+    // 3) App/task custom match (e.g. beisen phone/email) → matchedUserId
+    if (!user && thirdLoginResult.matchedUserId) {
+      user = await models.user.findOne({
+        where: { id: thirdLoginResult.matchedUserId, tenantId, status: 'open' }
+      });
+    }
+
     if (!user) {
       throw new Error('用户不存在或未绑定');
     }
 
-    await assertThirdLoginBindingConflict({
-      models,
-      tenantId,
-      platform,
-      sourceId: thirdLoginResult.id,
-      excludeUserId: user.id
-    });
+    const existingBinding = getThirdLoginFromOptions(user.options);
+    if (!existingBinding) {
+      await assertThirdLoginBindingConflict({
+        models,
+        tenantId,
+        platform,
+        sourceId,
+        excludeUserId: user.id
+      });
+      user.options = mergeThirdLoginOptions(user.options, platform, sourceId);
+    } else if (existingBinding.platform !== platform || existingBinding.sourceId !== sourceId) {
+      throw new Error('当前用户已绑定其他第三方账号');
+    }
 
-    user.options = mergeThirdLoginOptions(user.options, platform, thirdLoginResult.id);
     applyThirdLoginProfile(user, thirdLoginResult);
     await user.save();
     return user;
