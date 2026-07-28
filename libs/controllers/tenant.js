@@ -316,10 +316,12 @@ module.exports = fp(async (fastify, options) => {
     async request => {
       const type = request.query.type;
       const moduleCode = request.query.moduleCode != null && String(request.query.moduleCode).trim() ? String(request.query.moduleCode).trim() : null;
+      const tu = request.tenantUserInfo;
       return services.dataScope.resolveDataPermission({
-        tenantId: request.tenantUserInfo.tenantId,
-        currentTenantUserId: request.tenantUserInfo.id,
-        roleDetails: request.tenantUserInfo.roleDetails,
+        tenantId: tu.tenantId,
+        currentTenantUserId: tu.id,
+        roleDetails: typeof tu.getDataValue === 'function' ? tu.getDataValue('roleDetails') : tu.roleDetails,
+        roles: typeof tu.getDataValue === 'function' ? tu.getDataValue('roles') : tu.roles,
         type,
         moduleCode
       });
@@ -346,10 +348,12 @@ module.exports = fp(async (fastify, options) => {
       }
     },
     async request => {
+      const tu = request.tenantUserInfo;
       return services.dataScope.resolveDataPermissionByCode({
-        tenantId: request.tenantUserInfo.tenantId,
-        currentTenantUserId: request.tenantUserInfo.id,
-        roleDetails: request.tenantUserInfo.roleDetails,
+        tenantId: tu.tenantId,
+        currentTenantUserId: tu.id,
+        roleDetails: typeof tu.getDataValue === 'function' ? tu.getDataValue('roleDetails') : tu.roleDetails,
+        roles: typeof tu.getDataValue === 'function' ? tu.getDataValue('roles') : tu.roles,
         permissionCode: String(request.query.permissionCode).trim()
       });
     }
@@ -854,12 +858,14 @@ module.exports = fp(async (fastify, options) => {
       }
     },
     async request => {
+      const tu = request.tenantUserInfo;
       return await services.user.listByDataPermission(
         Object.assign({}, request.query, {
-          tenantId: request.tenantUserInfo.tenantId,
-          currentTenantUserId: request.tenantUserInfo.id,
-          roleDetails: request.tenantUserInfo.roleDetails,
-          permissions: request.tenantUserInfo.permissions
+          tenantId: tu.tenantId,
+          currentTenantUserId: tu.id,
+          roleDetails: typeof tu.getDataValue === 'function' ? tu.getDataValue('roleDetails') : tu.roleDetails,
+          roles: typeof tu.getDataValue === 'function' ? tu.getDataValue('roles') : tu.roles,
+          permissions: typeof tu.getDataValue === 'function' ? tu.getDataValue('permissions') : tu.permissions
         })
       );
     }

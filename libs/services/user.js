@@ -340,12 +340,48 @@ module.exports = fp(async (fastify, options) => {
   };
 
   /**
+   * 判定租户管理员：优先 roleDetails；否则用 roles（角色 id 或 code）对照系统 admin 角色。
+   * roleDetails 为 setDataValue 附加字段，部分场景下直接读 instance.roleDetails 会拿不到。
+   */
+  const resolveIsTenantAdmin = async ({ tenantId, roleDetails, roles, currentTenantUserId } = {}) => {
+    if (isTenantAdmin({ roleDetails })) {
+      return true;
+    }
+
+    let refs = Array.isArray(roles) ? roles.map(item => String(item).trim()).filter(Boolean) : [];
+    if (!refs.length && currentTenantUserId && tenantId) {
+      const me = await models.user.findOne({
+        where: { id: currentTenantUserId, tenantId },
+        attributes: ['roles']
+      });
+      refs = Array.isArray(me?.roles) ? me.roles.map(item => String(item).trim()).filter(Boolean) : [];
+    }
+    if (!refs.length || !tenantId) {
+      return false;
+    }
+
+    const adminRole = await models.role.findOne({
+      where: {
+        tenantId,
+        type: 'system',
+        code: 'admin'
+      },
+      attributes: ['id', 'code']
+    });
+    if (!adminRole) {
+      return false;
+    }
+    const adminId = String(adminRole.id);
+    return refs.includes(adminId) || refs.includes(String(adminRole.code));
+  };
+
+  /**
    * 带数据权限的租户用户列表：
    * - 租户管理员：同 list，可见全部
    * - 普通用户：默认本部门及以下（orgSubtree），可选 moduleCode / permissionCode 合并共享组数据来源
    */
-  const listByDataPermission = async ({ tenantId, currentTenantUserId, roleDetails, permissions: userPermissionCodes, filter = {}, perPage, currentPage, type, moduleCode, permissionCode }) => {
-    if (isTenantAdmin({ roleDetails })) {
+  const listByDataPermission = async ({ tenantId, currentTenantUserId, roleDetails, roles, permissions: userPermissionCodes, filter = {}, perPage, currentPage, type, moduleCode, permissionCode }) => {
+    if (await resolveIsTenantAdmin({ tenantId, roleDetails, roles, currentTenantUserId })) {
       return list({ tenantId, filter, perPage, currentPage });
     }
 
@@ -770,6 +806,7 @@ module.exports = fp(async (fastify, options) => {
       list,
       listByDataPermission,
       isTenantAdmin,
+      resolveIsTenantAdmin,
       setStatus,
       save,
       join,

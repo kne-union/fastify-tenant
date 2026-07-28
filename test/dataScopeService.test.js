@@ -101,7 +101,14 @@ describe('dataScope service', () => {
         },
         user: {
           isTenantAdmin: ({ roleDetails } = {}) =>
-            (Array.isArray(roleDetails) ? roleDetails : []).some(role => role && role.type === 'system' && role.code === 'admin')
+            (Array.isArray(roleDetails) ? roleDetails : []).some(role => role && role.type === 'system' && role.code === 'admin'),
+          resolveIsTenantAdmin: async ({ roleDetails, roles } = {}) => {
+            if ((Array.isArray(roleDetails) ? roleDetails : []).some(role => role && role.type === 'system' && role.code === 'admin')) {
+              return true;
+            }
+            const refs = Array.isArray(roles) ? roles.map(String) : [];
+            return refs.includes('admin-role-id') || refs.includes('admin');
+          }
         }
       },
       permissions: mockPermissions
