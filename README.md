@@ -244,10 +244,14 @@ npm i --save @kne/fastify-tenant
 | `resolveOwnerScopeTenantUserIds` | `{ tenantId, currentTenantUserId, transaction? }` | `string[]` | 本人 + 作为负责人所辖部门内用户 |
 | `resolveSharedGroupDataSourceUserIds` | `{ tenantId, currentTenantUserId, moduleCode, transaction? }` | `string[]` | 共享组数据来源用户 ID |
 | `resolveVisibleTenantUserIds` | `{ tenantId, currentTenantUserId, scope?, type?, moduleCode?, transaction? }` | `string[]` | 合并组织规则与共享组数据来源 |
-| `buildRowScopeWhere` | `{ tenantId, currentTenantUserId, scope?, type?, fieldKey?, moduleCode?, transaction? }` | `{ tenantUserIds, where }` | 生成 Sequelize where 片段 |
-| `resolveTenantUserIdsByPermissionCode` | `{ tenantId, currentTenantUserId, permissionCode, permissions?, transaction? }` | `{ tenantUserIds, moduleCode, type, dataScopeOpen }` | 按权限码解析可见用户 |
+| `resolveDataPermission` | `{ tenantId, currentTenantUserId, roleDetails?, type?, moduleCode?, transaction? }` | `{ allVisible, tenantUserIds, type, moduleCode }` | 数据权限入口；租户管理员 `allVisible=true` 且 `tenantUserIds=[]` |
+| `resolveDataPermissionByCode` | `{ tenantId, currentTenantUserId, roleDetails?, permissionCode, permissions?, transaction? }` | `{ allVisible, tenantUserIds, moduleCode, type, dataScopeOpen }` | 按权限码；管理员同上 |
+| `buildRowScopeWhere` | `{ tenantId, currentTenantUserId, roleDetails?, scope?, type?, fieldKey?, moduleCode?, transaction? }` | `{ allVisible, tenantUserIds, where }` | 生成 Sequelize where；管理员 `where={}` |
+| `resolveTenantUserIdsByPermissionCode` | `{ tenantId, currentTenantUserId, permissionCode, permissions?, transaction? }` | `{ tenantUserIds, moduleCode, type, dataScopeOpen }` | 按权限码解析可见用户（不含管理员短路） |
 
 dataScope type 取值：`self`（仅本人）、`owner`（本人 + 负责部门）、`org`（同组织）、`orgSubtree`（组织子树）。
+
+`allVisible`：`true` 表示全部可见、不过滤数据（忽略空的 `tenantUserIds`）；接口与 `buildRowScopeWhere` 默认 / 普通用户为 `false`。
 
 ---
 
@@ -303,24 +307,26 @@ GET `/api/tenant/data-permission`
 
 按组织范围规则解析当前登录租户用户可见的租户用户 ID 列表。传入非空 `moduleCode` 时额外合并该模块下共享组数据来源；不传或空则忽略共享组。
 
+租户管理员（系统角色 `type=system` 且 `code=admin`）返回 `allVisible: true` 且 `tenantUserIds: []`（未计算，不是无人可见）；调用方应跳过数据范围过滤。普通用户默认 `allVisible: false`。
+
 | 参数 | 位置 | 类型 | 必填 | 说明 |
 |------|------|------|------|------|
 | type | query | string | 否 | 数据范围：`self` / `owner` / `org` / `orgSubtree`，默认 `owner` |
 | moduleCode | query | string | 否 | 非空时合并共享组；不传或空则忽略共享组 |
 
-返回 `{ tenantUserIds: string[], type: string, moduleCode: string | null }`。
+返回 `{ allVisible: boolean, tenantUserIds: string[], type: string, moduleCode: string | null }`。
 
 #### 按权限码获取当前用户数据权限（可见租户用户）
 
 GET `/api/tenant/data-permission-by-code`
 
-根据功能权限码从权限树定位所属模块的 `dataScope`：已开启时按配置的 `type` 解析组织范围并合并该模块共享组数据来源；未开启时回退为仅本人（`self`）。
+根据功能权限码从权限树定位所属模块的 `dataScope`：已开启时按配置的 `type` 解析组织范围并合并该模块共享组数据来源；未开启时回退为仅本人（`self`）。租户管理员同样返回 `allVisible: true`（默认普通用户为 `false`）。
 
 | 参数 | 位置 | 类型 | 必填 | 说明 |
 |------|------|------|------|------|
 | permissionCode | query | string | 是 | 功能权限码，如 `setting:permission:shared-group:view` |
 
-返回 `{ tenantUserIds: string[], moduleCode: string | null, type: string, dataScopeOpen: boolean }`。
+返回 `{ allVisible: boolean, tenantUserIds: string[], moduleCode: string | null, type: string, dataScopeOpen: boolean }`。
 
 #### 获取公司信息
 

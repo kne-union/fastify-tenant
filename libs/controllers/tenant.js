@@ -296,6 +296,7 @@ module.exports = fp(async (fastify, options) => {
       onRequest: [userAuthenticate, authenticate.tenantUser],
       schema: {
         summary: '获取当前用户数据权限（可见租户用户）',
+        description: '租户管理员（系统角色 admin）返回 allVisible=true 且 tenantUserIds 为空；普通用户默认 allVisible=false，按组织范围返回可见用户 ID。',
         query: {
           type: 'object',
           properties: {
@@ -315,13 +316,13 @@ module.exports = fp(async (fastify, options) => {
     async request => {
       const type = request.query.type;
       const moduleCode = request.query.moduleCode != null && String(request.query.moduleCode).trim() ? String(request.query.moduleCode).trim() : null;
-      const args = {
+      return services.dataScope.resolveDataPermission({
         tenantId: request.tenantUserInfo.tenantId,
         currentTenantUserId: request.tenantUserInfo.id,
-        type
-      };
-      const tenantUserIds = moduleCode ? await services.dataScope.resolveVisibleTenantUserIds({ ...args, moduleCode }) : await services.dataScope.resolveOrgRuleTenantUserIds(args);
-      return { tenantUserIds, type, moduleCode };
+        roleDetails: request.tenantUserInfo.roleDetails,
+        type,
+        moduleCode
+      });
     }
   );
 
@@ -331,6 +332,7 @@ module.exports = fp(async (fastify, options) => {
       onRequest: [userAuthenticate, authenticate.tenantUser],
       schema: {
         summary: '按权限码获取当前用户数据权限（可见租户用户）',
+        description: '租户管理员返回 allVisible=true；普通用户默认 allVisible=false，按权限码对应模块 dataScope 解析。',
         query: {
           type: 'object',
           properties: {
@@ -344,9 +346,10 @@ module.exports = fp(async (fastify, options) => {
       }
     },
     async request => {
-      return services.dataScope.resolveTenantUserIdsByPermissionCode({
+      return services.dataScope.resolveDataPermissionByCode({
         tenantId: request.tenantUserInfo.tenantId,
         currentTenantUserId: request.tenantUserInfo.id,
+        roleDetails: request.tenantUserInfo.roleDetails,
         permissionCode: String(request.query.permissionCode).trim()
       });
     }

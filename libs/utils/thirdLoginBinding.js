@@ -1,5 +1,3 @@
-const { normalizePhone } = require('./phone');
-
 const getThirdLoginFromOptions = options => {
   const binding = options && options.thirdLogin;
   if (!binding || !binding.platform || !binding.sourceId) {
@@ -59,46 +57,19 @@ const findUserByThirdLoginBinding = async ({ models, tenantId, platform, sourceI
   );
 };
 
-const findUnboundUserForFirstMatch = async ({ models, tenantId, phone, email, platform }) => {
-  const users = await models.user.findAll({
-    where: { tenantId, status: 'open' }
-  });
-  const unbound = users.filter(user => {
-    const binding = getThirdLoginFromOptions(user.options);
-    if (binding) return false; // bound
-    if (platform) {
-      const typedPlatform = String(user.options?.thirdLogin?.platform || '');
-      // If the user has a typed platform (from org-sync), only match the same platform.
-      if (typedPlatform) {
-        return typedPlatform === String(platform);
-      }
-    }
-    return true;
-  });
-
-  if (phone) {
-    const normalizedPhone = normalizePhone(phone);
-    const phoneMatches = unbound.filter(user => user.phone && normalizePhone(user.phone) === normalizedPhone);
-    if (phoneMatches.length > 1) {
-      throw new Error('手机号匹配到多个用户，无法自动绑定');
-    }
-    if (phoneMatches.length === 1) {
-      return phoneMatches[0];
-    }
+/** Default match: org-synced user whose sync sourceId is the platform userid. */
+const findUserBySyncSourceId = async ({ models, tenantId, platform, sourceId, status = 'open' }) => {
+  if (!platform || sourceId == null || sourceId === '') {
+    return null;
   }
-
-  if (email) {
-    const normalizedEmail = String(email).trim().toLowerCase();
-    const emailMatches = unbound.filter(user => user.email && String(user.email).trim().toLowerCase() === normalizedEmail);
-    if (emailMatches.length > 1) {
-      throw new Error('邮箱匹配到多个用户，无法自动绑定');
+  return models.user.findOne({
+    where: {
+      tenantId,
+      status,
+      syncSource: String(platform),
+      sourceId: String(sourceId)
     }
-    if (emailMatches.length === 1) {
-      return emailMatches[0];
-    }
-  }
-
-  return null;
+  });
 };
 
 const assertThirdLoginBindingConflict = async ({ models, tenantId, platform, sourceId, excludeUserId }) => {
@@ -122,6 +93,6 @@ module.exports = {
   mergeThirdLoginTypeOptions,
   clearThirdLoginOptions,
   findUserByThirdLoginBinding,
-  findUnboundUserForFirstMatch,
+  findUserBySyncSourceId,
   assertThirdLoginBindingConflict
 };

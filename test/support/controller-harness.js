@@ -87,6 +87,19 @@ function createControllerServices(overrides = {}) {
         moduleCode: 'setting:permission:shared-group',
         type: 'org',
         dataScopeOpen: true
+      }),
+      resolveDataPermission: async () => ({
+        allVisible: false,
+        tenantUserIds: ['u1'],
+        type: 'owner',
+        moduleCode: null
+      }),
+      resolveDataPermissionByCode: async () => ({
+        allVisible: false,
+        tenantUserIds: ['u1'],
+        moduleCode: 'setting:permission:shared-group',
+        type: 'org',
+        dataScopeOpen: true
       })
     },
     thirdLogin: {
