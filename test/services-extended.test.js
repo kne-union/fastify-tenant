@@ -344,6 +344,23 @@ describe('services 扩展（tenant / role / user / company / setting）', () => 
     assert.ok(adminIds.has(userInParent.id));
     assert.ok(adminIds.has(userInOther.id));
 
+    // roleDetails 缺失时，仍可通过 roles 中的 admin 角色 id 识别管理员
+    const adminRole = await ctx.ns.models.role.findOne({
+      where: { tenantId, type: 'system', code: 'admin' }
+    });
+    assert.ok(adminRole);
+    const adminByRoles = await ctx.ns.services.user.listByDataPermission({
+      tenantId,
+      currentTenantUserId: userInParent.id,
+      roleDetails: [],
+      roles: [adminRole.id],
+      filter: {},
+      perPage: 100,
+      currentPage: 1
+    });
+    const adminByRolesIds = new Set(adminByRoles.pageData.map(row => row.id));
+    assert.ok(adminByRolesIds.has(userInOther.id), 'roles 含 admin 时应不过滤');
+
     const originalDataScope = ctx.ns.services.dataScope;
     ctx.ns.services.dataScope = {
       resolveVisibleTenantUserIds: async () => [userInChild.id, userInParent.id]

@@ -218,8 +218,8 @@ module.exports = fp(async (fastify, options) => {
    * }} p
    * @returns {Promise<{ allVisible: boolean, tenantUserIds: string[], where: Record<string, unknown> }>}
    */
-  const buildRowScopeWhere = async ({ tenantId, currentTenantUserId, roleDetails, scope, type, fieldKey, moduleCode, transaction }) => {
-    if (services.user.isTenantAdmin({ roleDetails })) {
+  const buildRowScopeWhere = async ({ tenantId, currentTenantUserId, roleDetails, roles, scope, type, fieldKey, moduleCode, transaction }) => {
+    if (await services.user.resolveIsTenantAdmin({ tenantId, roleDetails, roles, currentTenantUserId })) {
       return { allVisible: true, tenantUserIds: [], where: {} };
     }
     const tenantUserIds = await resolveVisibleTenantUserIds({
@@ -290,9 +290,9 @@ module.exports = fp(async (fastify, options) => {
   /**
    * 数据权限入口（供 HTTP /data-permission）：租户管理员 allVisible=true 且不计算 ids。
    */
-  const resolveDataPermission = async ({ tenantId, currentTenantUserId, roleDetails, type, moduleCode, transaction }) => {
+  const resolveDataPermission = async ({ tenantId, currentTenantUserId, roleDetails, roles, type, moduleCode, transaction }) => {
     const resolvedModuleCode = moduleCode != null && String(moduleCode).trim() ? String(moduleCode).trim() : null;
-    if (services.user.isTenantAdmin({ roleDetails })) {
+    if (await services.user.resolveIsTenantAdmin({ tenantId, roleDetails, roles, currentTenantUserId })) {
       return { allVisible: true, tenantUserIds: [], type, moduleCode: resolvedModuleCode };
     }
     const tenantUserIds = resolvedModuleCode
@@ -304,8 +304,8 @@ module.exports = fp(async (fastify, options) => {
   /**
    * 按权限码的数据权限入口（供 HTTP /data-permission-by-code）：租户管理员 allVisible=true 且不计算 ids。
    */
-  const resolveDataPermissionByCode = async ({ tenantId, currentTenantUserId, roleDetails, permissionCode, permissions: permissionsTree, transaction }) => {
-    if (services.user.isTenantAdmin({ roleDetails })) {
+  const resolveDataPermissionByCode = async ({ tenantId, currentTenantUserId, roleDetails, roles, permissionCode, permissions: permissionsTree, transaction }) => {
+    if (await services.user.resolveIsTenantAdmin({ tenantId, roleDetails, roles, currentTenantUserId })) {
       const tree = permissionsTree || permissions;
       const found = findDataScopeByPermissionCode(tree, permissionCode);
       if (!found) {
