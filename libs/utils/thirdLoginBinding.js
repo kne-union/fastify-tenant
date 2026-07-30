@@ -57,17 +57,31 @@ const findUserByThirdLoginBinding = async ({ models, tenantId, platform, sourceI
   );
 };
 
-/** Default match: org-synced user whose sync sourceId is the platform userid. */
+/** Default match: org-synced user whose sourceId is the platform userid (or rewritten beisen sourceId). */
 const findUserBySyncSourceId = async ({ models, tenantId, platform, sourceId, status = 'open' }) => {
-  if (!platform || sourceId == null || sourceId === '') {
+  if (sourceId == null || sourceId === '') {
     return null;
   }
+  const normalizedSourceId = String(sourceId);
+  if (platform) {
+    const exact = await models.user.findOne({
+      where: {
+        tenantId,
+        status,
+        syncSource: String(platform),
+        sourceId: normalizedSourceId
+      }
+    });
+    if (exact) {
+      return exact;
+    }
+  }
+  // 北森等：登录平台是企微/钉钉，但用户 syncSource 仍是 beisen
   return models.user.findOne({
     where: {
       tenantId,
       status,
-      syncSource: String(platform),
-      sourceId: String(sourceId)
+      sourceId: normalizedSourceId
     }
   });
 };

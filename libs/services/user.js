@@ -613,11 +613,11 @@ module.exports = fp(async (fastify, options) => {
         models,
         tenantId,
         platform,
-        sourceId: thirdLoginResult.id,
+        sourceId: thirdLoginResult.oauthUserId || thirdLoginResult.id,
         excludeUserId: targetUser.id
       });
 
-      targetUser.options = mergeThirdLoginOptions(targetUser.options, platform, thirdLoginResult.id);
+      targetUser.options = mergeThirdLoginOptions(targetUser.options, platform, thirdLoginResult.oauthUserId || thirdLoginResult.id);
       applyThirdLoginProfile(targetUser, thirdLoginResult);
       await targetUser.save();
       return targetUser;
@@ -628,27 +628,29 @@ module.exports = fp(async (fastify, options) => {
       throw new Error('未配置该渠道的第三方登录');
     }
 
-    const sourceId = String(thirdLoginResult.id);
+    // 绑定用真实 OAuth userid；查找用 result.id（北森场景下已被改写为 user.sourceId）
+    const bindSourceId = String(thirdLoginResult.oauthUserId || thirdLoginResult.id);
+    const syncLookupId = String(thirdLoginResult.id);
 
-    // 1) Already bound: options.thirdLogin.platform + sourceId
+    // 1) Already bound: options.thirdLogin.platform + OAuth userid
     let user = await findUserByThirdLoginBinding({
       models,
       tenantId,
       platform,
-      sourceId
+      sourceId: bindSourceId
     });
 
-    // 2) Default: org-synced userid → user.sourceId + syncSource(platform)
+    // 2) org-synced：user.sourceId（企微/钉钉同步，或北森改写后的 sourceId）
     if (!user) {
       user = await findUserBySyncSourceId({
         models,
         tenantId,
         platform,
-        sourceId
+        sourceId: syncLookupId
       });
     }
 
-    // 3) App/task custom match (e.g. beisen phone/email) → matchedUserId
+    // 3) task 手机/邮箱回退时带上的 matchedUserId（兼容旧链路）
     if (!user && thirdLoginResult.matchedUserId) {
       user = await models.user.findOne({
         where: { id: thirdLoginResult.matchedUserId, tenantId, status: 'open' }
@@ -665,11 +667,11 @@ module.exports = fp(async (fastify, options) => {
         models,
         tenantId,
         platform,
-        sourceId,
+        sourceId: bindSourceId,
         excludeUserId: user.id
       });
-      user.options = mergeThirdLoginOptions(user.options, platform, sourceId);
-    } else if (existingBinding.platform !== platform || existingBinding.sourceId !== sourceId) {
+      user.options = mergeThirdLoginOptions(user.options, platform, bindSourceId);
+    } else if (existingBinding.platform !== platform || existingBinding.sourceId !== bindSourceId) {
       throw new Error('当前用户已绑定其他第三方账号');
     }
 
