@@ -269,6 +269,6 @@ COMMENT ON COLUMN t_tenant_third_login.type IS '第三方登录渠道类型';
 COMMENT ON COLUMN t_tenant_third_login.config IS '第三方登录配置';
 COMMENT ON COLUMN t_tenant_third_login.options IS '扩展字段';
 
-CREATE UNIQUE INDEX IF NOT EXISTS t_tenant_third_login_tenant_type_uniq
-    ON t_tenant_third_login (tenant_id, type)
+CREATE UNIQUE INDEX IF NOT EXISTS t_tenant_third_login_tenant_type_target_uniq
+    ON t_tenant_third_login (tenant_id, type, (config->>'targetId'))
     WHERE deleted_at IS NULL;

@@ -778,14 +778,19 @@ module.exports = fp(async (fastify, options) => {
           type: 'object',
           properties: {
             tenantId: { type: 'string' },
-            source: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] }
+            source: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] },
+            targetId: { type: 'string' }
           },
-          required: ['tenantId', 'source']
+          required: ['tenantId', 'source', 'targetId']
         }
       }
     },
     async request => {
-      await services.thirdLogin.cancelConfig({ tenantId: request.body.tenantId, source: request.body.source });
+      await services.thirdLogin.cancelConfig({
+        tenantId: request.body.tenantId,
+        source: request.body.source,
+        targetId: request.body.targetId
+      });
       return {};
     }
   );
@@ -801,15 +806,16 @@ module.exports = fp(async (fastify, options) => {
           properties: {
             tenantId: { type: 'string' },
             id: { type: 'string' },
-            platform: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] }
+            platform: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] },
+            targetId: { type: 'string' }
           },
           required: ['tenantId', 'id']
         }
       }
     },
     async request => {
-      const { tenantId, id, platform } = request.body;
-      return services.user.thirdLoginBindToken({ tenantId, id, platform });
+      const { tenantId, id, platform, targetId } = request.body;
+      return services.user.thirdLoginBindToken({ tenantId, id, platform, targetId });
     }
   );
 

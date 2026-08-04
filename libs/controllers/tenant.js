@@ -25,6 +25,9 @@ module.exports = fp(async (fastify, options) => {
             },
             bindToken: {
               type: 'string'
+            },
+            targetId: {
+              type: 'string'
             }
           },
           required: ['platform', 'tenantId']
@@ -52,6 +55,9 @@ module.exports = fp(async (fastify, options) => {
               enum: ['wecom', 'dingtalk', 'beisen']
             },
             bindToken: {
+              type: 'string'
+            },
+            targetId: {
               type: 'string'
             }
           },
@@ -110,14 +116,19 @@ module.exports = fp(async (fastify, options) => {
         body: {
           type: 'object',
           properties: {
-            source: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] }
+            source: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] },
+            targetId: { type: 'string' }
           },
-          required: ['source']
+          required: ['source', 'targetId']
         }
       }
     },
     async request => {
-      await services.thirdLogin.cancelConfig({ tenantId: request.tenantUserInfo.tenantId, source: request.body.source });
+      await services.thirdLogin.cancelConfig({
+        tenantId: request.tenantUserInfo.tenantId,
+        source: request.body.source,
+        targetId: request.body.targetId
+      });
       return {};
     }
   );
@@ -132,17 +143,19 @@ module.exports = fp(async (fastify, options) => {
           type: 'object',
           properties: {
             id: { type: 'string' },
-            platform: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] }
+            platform: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] },
+            targetId: { type: 'string' }
           }
         }
       }
     },
     async request => {
-      const { id, platform } = request.body;
+      const { id, platform, targetId } = request.body;
       return services.user.thirdLoginBindToken({
         tenantId: request.tenantUserInfo.tenantId,
         id,
         platform,
+        targetId,
         tenantUserId: request.tenantUserInfo.id
       });
     }
