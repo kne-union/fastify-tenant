@@ -22,10 +22,10 @@ module.exports = ({ DataTypes, options }) => {
     },
     options: {
       comment: '第三方登录配置',
+      // 唯一约束 (tenant_id, type, config->>'targetId') 由 SQL 表达式索引维护
       indexes: [
         {
           fields: ['tenant_id', 'type'],
-          unique: true,
           where: {
             deleted_at: null
           }

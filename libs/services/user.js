@@ -597,7 +597,11 @@ module.exports = fp(async (fastify, options) => {
         throw new Error('绑定平台与登录平台不一致');
       }
 
-      const thirdLoginConfig = await services.thirdLogin.getConfig({ tenantId, type: platform });
+      const thirdLoginConfig = await services.thirdLogin.getConfig({
+        tenantId,
+        type: platform,
+        targetId: props.targetId || payload.targetId
+      });
       if (!thirdLoginConfig.enabled) {
         throw new Error('未配置该渠道的第三方登录');
       }
@@ -623,7 +627,11 @@ module.exports = fp(async (fastify, options) => {
       return targetUser;
     }
 
-    const thirdLoginConfig = await services.thirdLogin.getConfig({ tenantId, type: platform });
+    const thirdLoginConfig = await services.thirdLogin.getConfig({
+      tenantId,
+      type: platform,
+      targetId: props.targetId
+    });
     if (!thirdLoginConfig.enabled) {
       throw new Error('未配置该渠道的第三方登录');
     }
@@ -680,21 +688,23 @@ module.exports = fp(async (fastify, options) => {
     return user;
   };
 
-  const getThirdLoginUrl = async ({ tenantId, platform, redirect, bindToken }) => {
+  const getThirdLoginUrl = async ({ tenantId, platform, redirect, bindToken, targetId }) => {
     const tenant = await services.tenant.detail({ id: tenantId });
     if (typeof options?.thirdLogin?.getThirdLoginUrl !== 'function') {
       throw new Error('租户不支持第三方登录');
     }
 
-    const config = await services.thirdLogin.getConfig({ tenantId, type: platform });
+    const config = await services.thirdLogin.getConfig({ tenantId, type: platform, targetId });
     if (!config.enabled) {
       throw new Error('未找到有效的第三方登录配置');
     }
 
     const configProps = get(config, 'props');
+    const resolvedTargetId = config.targetId;
 
     const redirectQuery = redirect ? encodeURIComponent(redirect) : '';
     const bindTokenQuery = bindToken ? `&bindToken=${encodeURIComponent(bindToken)}` : '';
+    const targetIdQuery = resolvedTargetId ? `&targetId=${encodeURIComponent(resolvedTargetId)}` : '';
 
     const url =
       platform === 'dingtalk'
@@ -702,14 +712,22 @@ module.exports = fp(async (fastify, options) => {
             if (!(configProps.corpId && (configProps.client_id || configProps.clientId))) {
               throw new Error('租户参数配置不完整');
             }
-            return `/third-login-result?platform=dingtalk&code=200&message=success&redirect=${redirectQuery}&tenantId=${tenantId}&corpId=${configProps.corpId}&clientId=${configProps.client_id || configProps.clientId}${bindTokenQuery}`;
+            return `/third-login-result?platform=dingtalk&code=200&message=success&redirect=${redirectQuery}&tenantId=${tenantId}&corpId=${configProps.corpId}&clientId=${configProps.client_id || configProps.clientId}${bindTokenQuery}${targetIdQuery}`;
           })()
-        : await options.thirdLogin.getThirdLoginUrl({ tenant, platform, redirect, bindToken });
+        : await options.thirdLogin.getThirdLoginUrl({
+            tenant,
+            platform,
+            redirect,
+            bindToken,
+            targetId: resolvedTargetId,
+            configProps
+          });
 
     return {
       companyName: tenant.company?.name,
       logo: tenant.company?.logo,
       configProps,
+      targetId: resolvedTargetId,
       redirectUrl: url
     };
   };
@@ -721,12 +739,29 @@ module.exports = fp(async (fastify, options) => {
     if (typeof options?.thirdLogin?.getThirdLoginResult !== 'function') {
       throw new Error('租户不支持第三方登录');
     }
-    const thirdLoginResult = await options.thirdLogin.getThirdLoginResult(props);
-    const user = await resolveThirdLoginUser(props, thirdLoginResult);
-    return buildThirdLoginResponse(user, thirdLoginResult, props);
+
+    let resultProps = props;
+    if (props.platform) {
+      const config = await services.thirdLogin.getConfig({
+        tenantId: props.tenantId,
+        type: props.platform,
+        targetId: props.targetId
+      });
+      if (!config.enabled) {
+        throw new Error('未找到有效的第三方登录配置');
+      }
+      resultProps = Object.assign({}, props, {
+        targetId: config.targetId,
+        configProps: config.props
+      });
+    }
+
+    const thirdLoginResult = await options.thirdLogin.getThirdLoginResult(resultProps);
+    const user = await resolveThirdLoginUser(resultProps, thirdLoginResult);
+    return buildThirdLoginResponse(user, thirdLoginResult, resultProps);
   };
 
-  const thirdLoginBindToken = async ({ tenantId, id, platform, tenantUserId }) => {
+  const thirdLoginBindToken = async ({ tenantId, id, platform, targetId, tenantUserId }) => {
     const targetUserId = id || tenantUserId;
     if (!targetUserId) {
       throw new Error('用户ID不能为空');
@@ -735,16 +770,22 @@ module.exports = fp(async (fastify, options) => {
     await detail({ tenantId, id: targetUserId });
 
     let resolvedPlatform = platform;
+    let resolvedTargetId = targetId;
     if (!resolvedPlatform) {
       const { list: channels } = await services.thirdLogin.list({ tenantId });
       if (channels.length === 1) {
         resolvedPlatform = channels[0].source;
+        resolvedTargetId = resolvedTargetId || channels[0].targetId;
       } else {
         throw new Error('请指定第三方登录平台');
       }
     }
 
-    const config = await services.thirdLogin.getConfig({ tenantId, type: resolvedPlatform });
+    const config = await services.thirdLogin.getConfig({
+      tenantId,
+      type: resolvedPlatform,
+      targetId: resolvedTargetId
+    });
     if (!config.enabled) {
       throw new Error('未配置该渠道的第三方登录');
     }
@@ -755,18 +796,21 @@ module.exports = fp(async (fastify, options) => {
           purpose: 'third-login-bind',
           id: targetUserId,
           tenantId,
-          platform: resolvedPlatform
+          platform: resolvedPlatform,
+          targetId: config.targetId
         }
       },
       { expiresIn: '24h' }
     );
 
-    const url = `${fastify.config.ORIGIN}/third-login?platform=${resolvedPlatform}&tenantId=${tenantId}&bindToken=${encodeURIComponent(token)}`;
+    const targetIdQuery = config.targetId ? `&targetId=${encodeURIComponent(config.targetId)}` : '';
+    const url = `${fastify.config.ORIGIN}/third-login?platform=${resolvedPlatform}&tenantId=${tenantId}&bindToken=${encodeURIComponent(token)}${targetIdQuery}`;
 
     return {
       token,
       url,
-      platform: resolvedPlatform
+      platform: resolvedPlatform,
+      targetId: config.targetId
     };
   };
 
