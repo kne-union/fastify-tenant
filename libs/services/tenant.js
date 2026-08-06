@@ -2,9 +2,75 @@ const fp = require('fastify-plugin');
 const pick = require('lodash/pick');
 const { escapeLike } = require('../utils/escapeLike');
 
+const DEFAULT_FOLDER_TYPE = 'admin-file-system';
+const PENDING_LOGO_PATH = 'Tenant/_pending';
+
+const parsePhotoStringId = value => {
+  if (!value) {
+    return '';
+  }
+  if (typeof value === 'object' && value.id) {
+    return String(value.id);
+  }
+  return String(value).split('?')[0].trim();
+};
+
+const findChildFolder = (nodes, name) => {
+  return (nodes || []).find(node => {
+    const kind = node?.options?.kind || (node?.options?.fileId ? 'file' : 'folder');
+    return kind === 'folder' && String(node.name) === String(name);
+  });
+};
+
+const findFileNodeByFileId = (nodes, fileId) => {
+  const target = String(fileId);
+  return (nodes || []).find(node => {
+    const kind = node?.options?.kind || (node?.options?.fileId ? 'file' : 'folder');
+    return kind === 'file' && String(node.options?.fileId) === target;
+  });
+};
+
+const findPendingLogoNode = (tree, fileId) => {
+  const tenantFolder = findChildFolder(tree, 'Tenant');
+  if (!tenantFolder) {
+    return null;
+  }
+  const pendingFolder = findChildFolder(tenantFolder.children, '_pending');
+  if (!pendingFolder) {
+    return null;
+  }
+  return findFileNodeByFileId(pendingFolder.children, fileId) || null;
+};
+
 module.exports = fp(async (fastify, options) => {
   const { models, services } = fastify[options.name];
   const { Op } = fastify.sequelize.Sequelize;
+
+  const relocateTenantLogo = async ({ logo, tenantId }) => {
+    const folder = fastify.fileManager?.services?.folder;
+    if (!folder) {
+      return;
+    }
+    const fileId = parsePhotoStringId(logo);
+    if (!fileId || !tenantId) {
+      return;
+    }
+    const type = DEFAULT_FOLDER_TYPE;
+    const targetParentId = await folder.ensurePath({ type, path: `Tenant/${tenantId}` });
+    let pendingNode = null;
+    try {
+      const tree = await folder.getTree({ type });
+      pendingNode = findPendingLogoNode(tree, fileId);
+    } catch (e) {
+      fastify.log?.warn?.({ err: e }, 'tenant.create: failed to load folder tree for logo relocate');
+    }
+    if (pendingNode?.id) {
+      await folder.move({ type, ids: [pendingNode.id], parentId: targetParentId });
+      return;
+    }
+    await folder.addFiles({ type, ids: [fileId], parentId: targetParentId });
+  };
+
   const create = async ({ name, description, logo, themeColor, accountCount, supportLanguage, defaultLanguage, serviceStartTime, serviceEndTime }) => {
     const tenant = await models.tenant.create({
       name,
@@ -40,6 +106,14 @@ module.exports = fp(async (fastify, options) => {
     });
 
     await services.permission.initTenantPermissions({ tenantId: tenant.id });
+
+    if (logo) {
+      try {
+        await relocateTenantLogo({ logo, tenantId: tenant.id });
+      } catch (e) {
+        fastify.log?.warn?.({ err: e, tenantId: tenant.id }, `tenant.create: failed to relocate logo from ${PENDING_LOGO_PATH}`);
+      }
+    }
 
     return tenant;
   };
