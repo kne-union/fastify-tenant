@@ -380,164 +380,184 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const syncOrg = async ({ tenantId, syncSource, orgs, users }, outerTransaction) => {
-    return withTransaction(
-      fastify,
-      async transaction => {
-        const trans = outerTransaction || transaction;
-        const sourceIdToLocalId = new Map();
-        let syncedOrgs = 0;
-        let syncedUsers = 0;
+    try {
+      return await withTransaction(
+        fastify,
+        async transaction => {
+          const trans = outerTransaction || transaction;
+          const sourceIdToLocalId = new Map();
+          let syncedOrgs = 0;
+          let syncedUsers = 0;
 
-        // 收集本次同步数据中的 sourceId
-        const incomingOrgSourceIds = new Set(orgs.map(o => o.sourceId));
-        const incomingUserSourceIds = new Set(users.map(u => u.sourceId));
+          // 收集本次同步数据中的 sourceId
+          const incomingOrgSourceIds = new Set(orgs.map(o => o.sourceId));
+          const incomingUserSourceIds = new Set(users.map(u => u.sourceId));
 
-        // 1. 处理组织：按层级顺序创建/更新
-        for (const orgData of orgs) {
-          const { sourceId, parentSourceId, name, description, ...rest } = orgData;
-          // 查找本地parentId
-          let parentId = null;
-          if (parentSourceId) {
-            parentId = sourceIdToLocalId.get(parentSourceId) || null;
-          }
+          // 1. 处理组织：按层级顺序创建/更新
+          for (const orgData of orgs) {
+            const { sourceId, parentSourceId, name, description, ...rest } = orgData;
+            // 查找本地parentId
+            let parentId = null;
+            if (parentSourceId) {
+              parentId = sourceIdToLocalId.get(parentSourceId) || null;
+            }
 
-          // 查找是否已存在同源同sourceId的组织
-          let org = await models.org.findOne({
-            where: { tenantId, syncSource, sourceId },
-            transaction: trans
-          });
-
-          if (org) {
-            // 更新
-            await org.update(
-              {
-                name,
-                description,
-                parentId,
-                status: 'open',
-                ...rest
-              },
-              { transaction: trans }
-            );
-          } else {
-            // 创建
-            org = await models.org.create(
-              {
-                tenantId,
-                parentId,
-                name,
-                description,
-                status: 'open',
-                synced: true,
-                syncSource,
-                sourceId,
-                ...rest
-              },
-              { transaction: trans }
-            );
-          }
-
-          sourceIdToLocalId.set(sourceId, org.id);
-          syncedOrgs++;
-        }
-
-        // 2. 关闭不在本次同步数据中的组织
-        await models.org.update(
-          { status: 'closed' },
-          {
-            where: {
-              tenantId,
-              syncSource,
-              sourceId: { [Op.notIn]: [...incomingOrgSourceIds] },
-              status: 'open'
-            },
-            transaction: trans
-          }
-        );
-
-        // 3. 处理用户
-        for (const userData of users) {
-          try {
-            const { sourceId, orgSourceId, name, email, phone, ...rest } = userData;
-            // 查找对应的组织
-            const orgId = orgSourceId ? sourceIdToLocalId.get(orgSourceId) || null : null;
-
-            // 查找是否已存在同源同sourceId的用户
-            let tenantUser = await models.user.findOne({
+            // 查找是否已存在同源同sourceId的组织
+            let org = await models.org.findOne({
               where: { tenantId, syncSource, sourceId },
               transaction: trans
             });
 
-            if (tenantUser) {
+            if (org) {
               // 更新
-              const updateData = {
-                name,
-                status: 'open',
-                // org-sync should only sync org/user data; third-party id binding happens in third-login-result
-                // after OAuth verification.
-                options: mergeThirdLoginTypeOptions(tenantUser.options, syncSource),
-                ...rest
-              };
-              if (orgId) {
-                const existingOrgIds = Array.isArray(tenantUser.tenantOrgIds) ? tenantUser.tenantOrgIds : [];
-                if (!existingOrgIds.includes(orgId)) {
-                  existingOrgIds.push(orgId);
-                }
-                updateData.tenantOrgIds = existingOrgIds;
-              }
-              await tenantUser.update(updateData, { transaction: trans });
+              await org.update(
+                {
+                  name,
+                  description,
+                  parentId,
+                  status: 'open',
+                  ...rest
+                },
+                { transaction: trans }
+              );
             } else {
               // 创建
-              const tenantOrgIds = orgId ? [orgId] : [];
-              tenantUser = await services.user.create({
-                tenantId,
-                name,
-                email: email || undefined,
-                phone: phone || undefined,
-                tenantOrgIds,
-                synced: true,
-                syncSource,
-                sourceId,
-                // Only store the channel type; keep sourceId binding empty until OAuth/bind.
-                options: mergeThirdLoginTypeOptions(null, syncSource),
-                transaction: trans,
-                ...rest
-              });
+              org = await models.org.create(
+                {
+                  tenantId,
+                  parentId,
+                  name,
+                  description,
+                  status: 'open',
+                  synced: true,
+                  syncSource,
+                  sourceId,
+                  ...rest
+                },
+                { transaction: trans }
+              );
             }
 
-            syncedUsers++;
-          } catch (e) {
-            fastify.log.error(`同步用户失败: ${JSON.stringify(userData)}, 错误: ${e.message}`);
+            sourceIdToLocalId.set(sourceId, org.id);
+            syncedOrgs++;
           }
-        }
 
-        // 4. 关闭不在本次同步数据中的用户
-        await models.user.update(
-          { status: 'closed' },
-          {
-            where: {
-              tenantId,
-              syncSource,
-              sourceId: { [Op.notIn]: [...incomingUserSourceIds] },
-              status: 'open'
-            },
-            transaction: trans
+          // 2. 关闭不在本次同步数据中的组织
+          await models.org.update(
+            { status: 'closed' },
+            {
+              where: {
+                tenantId,
+                syncSource,
+                sourceId: { [Op.notIn]: [...incomingOrgSourceIds] },
+                status: 'open'
+              },
+              transaction: trans
+            }
+          );
+
+          // 3. 处理用户（每人一个 SAVEPOINT：单条 SQL 失败只回滚该用户，不污染外层事务）
+          const sq = getSequelize(fastify);
+          for (const userData of users) {
+            let userTrans;
+            try {
+              userTrans = await sq.transaction({ transaction: trans });
+              const { sourceId, orgSourceId, name, email, phone, ...rest } = userData;
+              // 查找对应的组织
+              const orgId = orgSourceId ? sourceIdToLocalId.get(orgSourceId) || null : null;
+
+              // 查找是否已存在同源同sourceId的用户
+              let tenantUser = await models.user.findOne({
+                where: { tenantId, syncSource, sourceId },
+                transaction: userTrans
+              });
+
+              if (tenantUser) {
+                // 更新
+                const updateData = {
+                  name,
+                  status: 'open',
+                  // org-sync should only sync org/user data; third-party id binding happens in third-login-result
+                  // after OAuth verification.
+                  options: mergeThirdLoginTypeOptions(tenantUser.options, syncSource),
+                  ...rest
+                };
+                if (orgId) {
+                  const existingOrgIds = Array.isArray(tenantUser.tenantOrgIds) ? tenantUser.tenantOrgIds : [];
+                  if (!existingOrgIds.includes(orgId)) {
+                    existingOrgIds.push(orgId);
+                  }
+                  updateData.tenantOrgIds = existingOrgIds;
+                }
+                await tenantUser.update(updateData, { transaction: userTrans });
+              } else {
+                // 创建
+                const tenantOrgIds = orgId ? [orgId] : [];
+                tenantUser = await services.user.create({
+                  tenantId,
+                  name,
+                  email: email || undefined,
+                  phone: phone || undefined,
+                  tenantOrgIds,
+                  synced: true,
+                  syncSource,
+                  sourceId,
+                  // Only store the channel type; keep sourceId binding empty until OAuth/bind.
+                  options: mergeThirdLoginTypeOptions(null, syncSource),
+                  transaction: userTrans,
+                  ...rest
+                });
+              }
+
+              await userTrans.commit();
+              syncedUsers++;
+            } catch (e) {
+              if (userTrans) {
+                try {
+                  await userTrans.rollback();
+                } catch (_) {
+                  // ignore rollback errors after aborted savepoint
+                }
+              }
+              fastify.log.error(`同步用户失败: ${JSON.stringify(userData)}, 错误: ${e.message}`);
+            }
           }
-        );
 
-        // 5. 更新同步记录
-        await models.orgSync.update(
-          { status: 'success', lastSyncAt: new Date() },
-          {
-            where: { tenantId, type: syncSource },
-            transaction: trans
-          }
-        );
+          // 4. 关闭不在本次同步数据中的用户
+          await models.user.update(
+            { status: 'closed' },
+            {
+              where: {
+                tenantId,
+                syncSource,
+                sourceId: { [Op.notIn]: [...incomingUserSourceIds] },
+                status: 'open'
+              },
+              transaction: trans
+            }
+          );
 
-        return { syncedOrgs, syncedUsers };
-      },
-      outerTransaction
-    );
+          // 5. 更新同步记录
+          await models.orgSync.update(
+            { status: 'success', lastSyncAt: new Date() },
+            {
+              where: { tenantId, type: syncSource },
+              transaction: trans
+            }
+          );
+
+          return { syncedOrgs, syncedUsers };
+        },
+        outerTransaction
+      );
+    } catch (e) {
+      try {
+        await services.orgSync.markFailed({ tenantId, syncSource });
+      } catch (statusError) {
+        fastify.log.error(`同步失败后更新状态失败: ${statusError.message}`);
+      }
+      throw e;
+    }
   };
 
   Object.assign(fastify[options.name].services, {

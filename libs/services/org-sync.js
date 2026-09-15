@@ -76,6 +76,19 @@ module.exports = fp(async (fastify, options) => {
     return {};
   };
 
+  const markFailed = async ({ tenantId, syncSource }) => {
+    // 独立 autocommit，避免落在已 aborted 的事务里写不进去
+    await models.orgSync.update(
+      { status: 'failed' },
+      {
+        where: {
+          tenantId,
+          ...(syncSource ? { type: syncSource } : {})
+        }
+      }
+    );
+  };
+
   const triggerSync = async ({ tenantId }) => {
     if (typeof options.syncOrgTask !== 'function') {
       throw new Error('syncOrgTask 未配置，无法执行同步');
@@ -87,8 +100,13 @@ module.exports = fp(async (fastify, options) => {
       throw new Error('未找到同步配置，请先保存关联配置');
     }
     const config = await getConfig({ tenantId });
-    await options.syncOrgTask({ tenantId, syncSource: record.type, config });
     await record.update({ status: 'running' });
+    try {
+      await options.syncOrgTask({ tenantId, syncSource: record.type, config });
+    } catch (e) {
+      await markFailed({ tenantId, syncSource: record.type });
+      throw e;
+    }
     return {};
   };
 
@@ -132,6 +150,6 @@ module.exports = fp(async (fastify, options) => {
   };
 
   Object.assign(fastify[options.name].services, {
-    orgSync: { getConfig, saveConfig, cancelConfig, triggerSync, sendMessage }
+    orgSync: { getConfig, saveConfig, cancelConfig, triggerSync, sendMessage, markFailed }
   });
 });
