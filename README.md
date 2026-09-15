@@ -12,38 +12,38 @@ npm i --save @kne/fastify-tenant
 
 ### 概述
 
-### 项目概述
+#### 项目概述
 
 `@kne/fastify-tenant` 是基于 Fastify 框架的多租户系统插件，提供完整的租户管理能力，包括租户创建与配置、用户管理、组织架构、角色权限、共享组与数据范围、公司信息、租户设置等。
 
-### 主要特性
+#### 主要特性
 
-#### 租户管理
+##### 租户管理
 
 - 租户 CRUD、状态管理（open / closed）
 - 基本配置：名称、主题色、Logo、账号数量限制、多语言、服务时间
 - 管理员侧完整管理接口
 
-#### 用户管理
+##### 用户管理
 
 - 用户通过邀请链接 / 邀请码加入租户
 - 可用租户列表查询、默认租户切换
 - 租户用户 CRUD、状态管理（启用 / 禁用）
 - 用户邀请与消息发送
 
-#### 组织架构
+##### 组织架构
 
 - 树形组织结构管理（创建、编辑、删除）
 - 组织负责人（leaderUserId）设置
 - 批量导入组织与用户（JSON 行数据，前端解析 Excel 后提交）
 
-#### 角色权限
+##### 角色权限
 
 - 角色 CRUD、状态管理（open / closed）
 - 系统角色（system）与自定义角色（custom），系统角色不可修改 / 删除
 - 角色权限配置与查询
 
-#### 共享组与数据范围
+##### 共享组与数据范围
 
 - 共享组 CRUD、状态管理
 - 共享组包含数据来源（dataSourceTenantUserIds）和成员（memberTenantUserIds）
@@ -51,18 +51,18 @@ npm i --save @kne/fastify-tenant
 - 数据范围（dataScope）支持 self / owner / org / orgSubtree 四种模式
 - 按权限码自动解析可见租户用户 ID（含共享组扩展）
 
-#### 公司信息
+##### 公司信息
 
 - 公司基本信息（名称、全称、行业、规模、地址等）
 - 公司介绍（Banner、团队介绍、发展历程、联系方式）
 
-#### 租户设置
+##### 租户设置
 
 - 环境变量管理（支持密钥类型，密钥值以 `******` 展示）
 - 自定义组件管理（增删改查、复制）
 - 租户权限配置
 
-### 使用场景
+#### 使用场景
 
 | 场景 | 说明 |
 |------|------|
@@ -76,7 +76,7 @@ npm i --save @kne/fastify-tenant
 
 ### API
 
-### 插件注册
+#### 插件注册
 
 | 属性名 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
@@ -90,9 +90,9 @@ npm i --save @kne/fastify-tenant
 | getAdminUserAuthenticate | function | 使用 fastify-account 的管理员认证 | 获取管理员认证函数 |
 | permissionsProfile | string | `./libs/permissions.js` | 权限配置文件路径（支持 .js / .yml / .json） |
 
-### 数据模型
+#### 数据模型
 
-#### tenant（租户）
+##### tenant（租户）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -108,7 +108,7 @@ npm i --save @kne/fastify-tenant
 | serviceEndTime | DATE | 服务结束时间 |
 | options | JSONB | 扩展字段 |
 
-#### user（租户用户）
+##### user（租户用户）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -124,7 +124,7 @@ npm i --save @kne/fastify-tenant
 | roles | JSON | 角色 ID 列表 |
 | options | JSONB | 扩展字段 |
 
-#### role（角色）
+##### role（角色）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -136,7 +136,7 @@ npm i --save @kne/fastify-tenant
 | status | ENUM | 状态：open / closed |
 | options | JSONB | 扩展字段 |
 
-#### org（组织）
+##### org（组织）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -147,7 +147,7 @@ npm i --save @kne/fastify-tenant
 | leaderUserId | STRING | 部门负责人（租户用户 ID） |
 | options | JSONB | 扩展字段 |
 
-#### company（公司信息）
+##### company（公司信息）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -169,7 +169,7 @@ npm i --save @kne/fastify-tenant
 | contact | JSON | 联系方式 |
 | options | JSONB | 扩展字段 |
 
-#### setting（租户设置）
+##### setting（租户设置）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -179,7 +179,7 @@ npm i --save @kne/fastify-tenant
 | permissions | JSON | 租户权限 |
 | options | JSON | 配置项 |
 
-#### shared_group（共享组）
+##### shared_group（共享组）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -190,21 +190,21 @@ npm i --save @kne/fastify-tenant
 | status | ENUM | 状态：open / closed |
 | options | JSONB | 扩展字段 |
 
-#### shared_group_data_source（共享组数据来源）
+##### shared_group_data_source（共享组数据来源）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | sharedGroupId | STRING | 共享组 ID |
 | tenantUserId | STRING | 数据来源租户用户 ID |
 
-#### shared_group_member（共享组成员）
+##### shared_group_member（共享组成员）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | sharedGroupId | STRING | 共享组 ID |
 | tenantUserId | STRING | 共享组成员租户用户 ID |
 
-### 权限模块
+#### 权限模块
 
 默认权限配置包含以下模块：
 
@@ -216,7 +216,7 @@ npm i --save @kne/fastify-tenant
 | 共享组 (shared-group) | create, view, edit, remove | open: true, list: [read, write], type: org |
 | 用户管理 (user-manager) | create, view, edit, remove, invite | - |
 
-### 程序化 API
+#### 程序化 API
 
 插件注册后通过 `fastify[options.name]` 访问命名空间，提供以下子模块：
 
@@ -236,7 +236,7 @@ npm i --save @kne/fastify-tenant
 | `utils.flattenPermissions` | 展平权限配置 |
 | `appendPermissions(outside)` | 运行时追加权限配置 |
 
-#### dataScope 服务方法
+##### dataScope 服务方法
 
 | 方法 | 参数 | 返回值 | 说明 |
 |------|------|--------|------|
@@ -255,11 +255,11 @@ dataScope type 取值：`self`（仅本人）、`owner`（本人 + 负责部门�
 
 ---
 
-### 租户用户 API
+#### 租户用户 API
 
 以下接口需用户认证，租户侧接口自动从上下文获取 `tenantId`。
 
-#### 解析租户邀请数据
+##### 解析租户邀请数据
 
 POST `/api/tenant/parse-join-token`
 
@@ -267,7 +267,7 @@ POST `/api/tenant/parse-join-token`
 |------|------|------|------|------|
 | token | body | string | 是 | 邀请令牌 |
 
-#### 加入租户
+##### 加入租户
 
 POST `/api/tenant/join`
 
@@ -275,13 +275,13 @@ POST `/api/tenant/join`
 |------|------|------|------|------|
 | token | body | string | 是 | 邀请令牌 |
 
-#### 用户可用租户列表
+##### 用户可用租户列表
 
 GET `/api/tenant/available-list`
 
 无参数
 
-#### 切换用户默认租户
+##### 切换用户默认租户
 
 POST `/api/tenant/switch-default-tenant`
 
@@ -289,19 +289,19 @@ POST `/api/tenant/switch-default-tenant`
 |------|------|------|------|------|
 | tenantId | body | string | 是 | 租户 ID |
 
-#### 获取登录租户用户信息
+##### 获取登录租户用户信息
 
 GET `/api/tenant/getUserInfo`
 
 无参数。返回 `{ userInfo, tenantUserInfo, company, tenant }`。
 
-#### 获取当前租户系统语言设置
+##### 获取当前租户系统语言设置
 
 GET `/api/tenant/languages`
 
 无参数。返回 `{ supportLanguage: string[], defaultLanguage: string }`（取自当前登录租户）。
 
-#### 获取当前用户数据权限（可见租户用户）
+##### 获取当前用户数据权限（可见租户用户）
 
 GET `/api/tenant/data-permission`
 
@@ -316,7 +316,7 @@ GET `/api/tenant/data-permission`
 
 返回 `{ allVisible: boolean, tenantUserIds: string[], type: string, moduleCode: string | null }`。
 
-#### 按权限码获取当前用户数据权限（可见租户用户）
+##### 按权限码获取当前用户数据权限（可见租户用户）
 
 GET `/api/tenant/data-permission-by-code`
 
@@ -328,13 +328,13 @@ GET `/api/tenant/data-permission-by-code`
 
 返回 `{ allVisible: boolean, tenantUserIds: string[], moduleCode: string | null, type: string, dataScopeOpen: boolean }`。
 
-#### 获取公司信息
+##### 获取公司信息
 
 GET `/api/tenant/company-detail`
 
 无参数
 
-#### 保存公司信息
+##### 保存公司信息
 
 POST `/api/tenant/company-save`
 
@@ -360,9 +360,9 @@ POST `/api/tenant/company-save`
 
 ---
 
-### 组织架构 API（租户侧）
+#### 组织架构 API（租户侧）
 
-#### 创建组织节点
+##### 创建组织节点
 
 POST `/api/tenant/org-create`
 
@@ -373,13 +373,13 @@ POST `/api/tenant/org-create`
 | description | body | string | 否 | 描述 |
 | leaderUserId | body | string \| null | 否 | 部门负责人（租户用户 ID） |
 
-#### 获取租户组织
+##### 获取租户组织
 
 GET `/api/tenant/org-list`
 
 无参数
 
-#### 删除组织节点
+##### 删除组织节点
 
 POST `/api/tenant/org-remove`
 
@@ -387,7 +387,7 @@ POST `/api/tenant/org-remove`
 |------|------|------|------|------|
 | id | body | string | 是 | 组织节点 ID |
 
-#### 编辑组织节点
+##### 编辑组织节点
 
 POST `/api/tenant/org-save`
 
@@ -398,7 +398,7 @@ POST `/api/tenant/org-save`
 | description | body | string | 否 | 描述 |
 | leaderUserId | body | string \| null | 否 | 部门负责人（传 null 清空） |
 
-#### 批量导入组织与用户
+##### 批量导入组织与用户
 
 POST `/api/tenant/org-batch-import`
 
@@ -432,9 +432,9 @@ POST `/api/tenant/org-batch-import`
 
 ---
 
-### 租户用户管理 API（租户侧）
+#### 租户用户管理 API（租户侧）
 
-#### 创建租户用户
+##### 创建租户用户
 
 POST `/api/tenant/user-create`
 
@@ -448,7 +448,7 @@ POST `/api/tenant/user-create`
 | phone | body | string | 否 | 手机号 |
 | description | body | string | 否 | 描述 |
 
-#### 获取租户用户详情
+##### 获取租户用户详情
 
 GET `/api/tenant/user-detail`
 
@@ -456,7 +456,7 @@ GET `/api/tenant/user-detail`
 |------|------|------|------|------|
 | id | query | string | 是 | 用户 ID |
 
-#### 编辑租户用户
+##### 编辑租户用户
 
 POST `/api/tenant/user-save`
 
@@ -471,7 +471,7 @@ POST `/api/tenant/user-save`
 | phone | body | string | 否 | 手机号 |
 | description | body | string | 否 | 描述 |
 
-#### 删除租户用户
+##### 删除租户用户
 
 POST `/api/tenant/user-remove`
 
@@ -479,7 +479,7 @@ POST `/api/tenant/user-remove`
 |------|------|------|------|------|
 | id | body | string | 是 | 用户 ID |
 
-#### 租户用户列表
+##### 租户用户列表
 
 GET `/api/tenant/user-list`
 
@@ -489,7 +489,7 @@ GET `/api/tenant/user-list`
 | perPage | query | number | 否 | 20 | 每页数量 |
 | currentPage | query | number | 否 | 1 | 当前页码 |
 
-#### 租户用户列表（数据权限）
+##### 租户用户列表（数据权限）
 
 GET `/api/tenant/user-list-by-data-permission`
 
@@ -504,7 +504,7 @@ GET `/api/tenant/user-list-by-data-permission`
 | moduleCode | query | string | 否 | - | 非空时合并该模块下共享组数据来源 |
 | permissionCode | query | string | 否 | - | 功能权限码：校验当前用户是否拥有该权限，并用于定位模块以合并共享组 |
 
-#### 修改租户用户状态
+##### 修改租户用户状态
 
 POST `/api/tenant/user-set-status`
 
@@ -513,7 +513,7 @@ POST `/api/tenant/user-set-status`
 | id | body | string | 是 | 用户 ID |
 | status | body | string | 是 | 状态：open / closed |
 
-#### 获取用户邀请链接
+##### 获取用户邀请链接
 
 GET `/api/tenant/user-invite-token`
 
@@ -521,7 +521,7 @@ GET `/api/tenant/user-invite-token`
 |------|------|------|------|------|
 | id | query | string | 是 | 用户 ID |
 
-#### 发送邀请租户消息
+##### 发送邀请租户消息
 
 POST `/api/tenant/send-invite-message`
 
@@ -531,9 +531,9 @@ POST `/api/tenant/send-invite-message`
 
 ---
 
-### 自定义组件 API（租户侧）
+#### 自定义组件 API（租户侧）
 
-#### 自定义组件详情
+##### 自定义组件详情
 
 GET `/api/tenant/custom-component-detail`
 
@@ -543,9 +543,9 @@ GET `/api/tenant/custom-component-detail`
 
 ---
 
-### 角色管理 API（租户侧）
+#### 角色管理 API（租户侧）
 
-#### 创建租户角色
+##### 创建租户角色
 
 POST `/api/tenant/role/create`
 
@@ -559,7 +559,7 @@ POST `/api/tenant/role/create`
 | options | body | object | 否 | 扩展配置 |
 | createdTenantUserId | body | string | 否 | 创建者 ID |
 
-#### 租户角色列表
+##### 租户角色列表
 
 GET `/api/tenant/role/list`
 
@@ -572,7 +572,7 @@ GET `/api/tenant/role/list`
 | perPage | query | number | 否 | 20 | 每页数量 |
 | currentPage | query | number | 否 | 1 | 当前页码 |
 
-#### 删除租户角色
+##### 删除租户角色
 
 POST `/api/tenant/role/remove`
 
@@ -580,7 +580,7 @@ POST `/api/tenant/role/remove`
 |------|------|------|------|------|
 | id | body | string | 是 | 角色 ID |
 
-#### 修改租户角色状态
+##### 修改租户角色状态
 
 POST `/api/tenant/role/set-status`
 
@@ -589,7 +589,7 @@ POST `/api/tenant/role/set-status`
 | id | body | string | 是 | 角色 ID |
 | status | body | string | 是 | 状态：open / closed |
 
-#### 编辑租户角色
+##### 编辑租户角色
 
 POST `/api/tenant/role/save`
 
@@ -603,7 +603,7 @@ POST `/api/tenant/role/save`
 | type | body | string | 否 | 类型 |
 | options | body | object | 否 | 扩展配置 |
 
-#### 租户角色权限列表
+##### 租户角色权限列表
 
 GET `/api/tenant/role/permission-list`
 
@@ -611,7 +611,7 @@ GET `/api/tenant/role/permission-list`
 |------|------|------|------|------|
 | id | query | string | 是 | 角色 ID |
 
-#### 保存租户角色权限
+##### 保存租户角色权限
 
 POST `/api/tenant/role/save-permission`
 
@@ -622,9 +622,9 @@ POST `/api/tenant/role/save-permission`
 
 ---
 
-### 权限 API（租户侧）
+#### 权限 API（租户侧）
 
-#### 租户权限列表
+##### 租户权限列表
 
 GET `/api/tenant/permission/list`
 
@@ -632,9 +632,9 @@ GET `/api/tenant/permission/list`
 
 ---
 
-### 共享组 API（租户侧）
+#### 共享组 API（租户侧）
 
-#### 共享组列表
+##### 共享组列表
 
 GET `/api/tenant/shared_group/list`
 
@@ -644,7 +644,7 @@ GET `/api/tenant/shared_group/list`
 | perPage | query | number | 否 | 20 | 每页数量 |
 | currentPage | query | number | 否 | 1 | 当前页码 |
 
-#### 创建共享组
+##### 创建共享组
 
 POST `/api/tenant/shared_group/create`
 
@@ -660,7 +660,7 @@ POST `/api/tenant/shared_group/create`
 | status | body | string | 否 | 状态：open / closed |
 | options | body | object | 否 | 扩展字段 |
 
-#### 编辑共享组
+##### 编辑共享组
 
 POST `/api/tenant/shared_group/save`
 
@@ -675,7 +675,7 @@ POST `/api/tenant/shared_group/save`
 | status | body | string | 否 | 状态 |
 | options | body | object | 否 | 扩展字段 |
 
-#### 修改共享组状态
+##### 修改共享组状态
 
 POST `/api/tenant/shared_group/set-status`
 
@@ -684,7 +684,7 @@ POST `/api/tenant/shared_group/set-status`
 | id | body | string | 是 | 共享组 ID |
 | status | body | string | 是 | 状态：open / closed |
 
-#### 删除共享组
+##### 删除共享组
 
 POST `/api/tenant/shared_group/remove`
 
@@ -694,11 +694,11 @@ POST `/api/tenant/shared_group/remove`
 
 ---
 
-### 管理员 - 租户管理 API
+#### 管理员 - 租户管理 API
 
 以下接口需用户认证 + 管理员认证，body 中须显式传 `tenantId`。
 
-#### 租户列表
+##### 租户列表
 
 GET `/api/tenant/admin/list`
 
@@ -708,7 +708,7 @@ GET `/api/tenant/admin/list`
 | perPage | query | number | 否 | 20 | 每页数量 |
 | currentPage | query | number | 否 | 1 | 当前页码 |
 
-#### 租户详情
+##### 租户详情
 
 GET `/api/tenant/admin/detail`
 
@@ -716,7 +716,7 @@ GET `/api/tenant/admin/detail`
 |------|------|------|------|------|
 | id | query | string | 是 | 租户 ID |
 
-#### 添加租户
+##### 添加租户
 
 POST `/api/tenant/admin/create`
 
@@ -733,7 +733,7 @@ POST `/api/tenant/admin/create`
 | supportLanguage | body | array\<string\> | 否 | 支持语言 |
 | defaultLanguage | body | string | 否 | 默认语言 |
 
-#### 保存租户
+##### 保存租户
 
 POST `/api/tenant/admin/save`
 
@@ -751,7 +751,7 @@ POST `/api/tenant/admin/save`
 | serviceStartTime | body | string | 否 | 服务开始时间 |
 | serviceEndTime | body | string | 否 | 服务结束时间 |
 
-#### 保存租户系统语言设置
+##### 保存租户系统语言设置
 
 POST `/api/tenant/admin/save-languages`
 
@@ -765,7 +765,7 @@ POST `/api/tenant/admin/save-languages`
 
 返回 `{ supportLanguage, defaultLanguage }`。
 
-#### 设置租户状态
+##### 设置租户状态
 
 POST `/api/tenant/admin/set-status`
 
@@ -774,7 +774,7 @@ POST `/api/tenant/admin/set-status`
 | id | body | string | 是 | 租户 ID |
 | status | body | string | 是 | 状态 |
 
-#### 删除租户
+##### 删除租户
 
 POST `/api/tenant/admin/remove`
 
@@ -784,9 +784,9 @@ POST `/api/tenant/admin/remove`
 
 ---
 
-### 管理员 - 环境变量管理 API
+#### 管理员 - 环境变量管理 API
 
-#### 设置租户环境变量
+##### 设置租户环境变量
 
 POST `/api/tenant/admin/append-args`
 
@@ -803,7 +803,7 @@ POST `/api/tenant/admin/append-args`
 | value | string | 是 | 变量值 |
 | secret | boolean | 否 | 是否为密钥，默认 false |
 
-#### 删除环境变量
+##### 删除环境变量
 
 POST `/api/tenant/admin/remove-arg`
 
@@ -814,9 +814,9 @@ POST `/api/tenant/admin/remove-arg`
 
 ---
 
-### 管理员 - 自定义组件管理 API
+#### 管理员 - 自定义组件管理 API
 
-#### 设置租户自定义组件
+##### 设置租户自定义组件
 
 POST `/api/tenant/admin/append-custom-component`
 
@@ -835,7 +835,7 @@ POST `/api/tenant/admin/append-custom-component`
 | content | string | 是 | 组件内容 |
 | description | string | 否 | 组件描述 |
 
-#### 自定义组件详情
+##### 自定义组件详情
 
 GET `/api/tenant/admin/custom-component-detail`
 
@@ -844,7 +844,7 @@ GET `/api/tenant/admin/custom-component-detail`
 | tenantId | query | string | 是 | 租户 ID |
 | key | query | string | 是 | 组件标识 |
 
-#### 删除自定义组件
+##### 删除自定义组件
 
 POST `/api/tenant/admin/remove-custom-component`
 
@@ -853,7 +853,7 @@ POST `/api/tenant/admin/remove-custom-component`
 | tenantId | body | string | 是 | 租户 ID |
 | key | body | string | 是 | 组件标识 |
 
-#### 保存自定义组件
+##### 保存自定义组件
 
 POST `/api/tenant/admin/save-custom-component`
 
@@ -862,7 +862,7 @@ POST `/api/tenant/admin/save-custom-component`
 | tenantId | body | string | 是 | 租户 ID |
 | customComponent | body | object | 是 | 自定义组件（结构同上） |
 
-#### 复制自定义组件
+##### 复制自定义组件
 
 POST `/api/tenant/admin/copy-custom-component`
 
@@ -873,9 +873,9 @@ POST `/api/tenant/admin/copy-custom-component`
 
 ---
 
-### 管理员 - 公司信息 API
+#### 管理员 - 公司信息 API
 
-#### 查询公司信息
+##### 查询公司信息
 
 GET `/api/tenant/admin/company-detail`
 
@@ -883,7 +883,7 @@ GET `/api/tenant/admin/company-detail`
 |------|------|------|------|------|
 | tenantId | query | string | 是 | 租户 ID |
 
-#### 保存公司信息
+##### 保存公司信息
 
 POST `/api/tenant/admin/company-save`
 
@@ -910,9 +910,9 @@ POST `/api/tenant/admin/company-save`
 
 ---
 
-### 管理员 - 组织架构 API
+#### 管理员 - 组织架构 API
 
-#### 创建组织节点
+##### 创建组织节点
 
 POST `/api/tenant/admin/org-create`
 
@@ -924,7 +924,7 @@ POST `/api/tenant/admin/org-create`
 | description | body | string | 否 | 描述 |
 | leaderUserId | body | string \| null | 否 | 部门负责人（租户用户 ID） |
 
-#### 获取租户组织
+##### 获取租户组织
 
 GET `/api/tenant/admin/org-list`
 
@@ -932,7 +932,7 @@ GET `/api/tenant/admin/org-list`
 |------|------|------|------|------|
 | tenantId | query | string | 是 | 租户 ID |
 
-#### 删除组织节点
+##### 删除组织节点
 
 POST `/api/tenant/admin/org-remove`
 
@@ -941,7 +941,7 @@ POST `/api/tenant/admin/org-remove`
 | tenantId | body | string | 是 | 租户 ID |
 | id | body | string | 是 | 组织节点 ID |
 
-#### 编辑组织节点
+##### 编辑组织节点
 
 POST `/api/tenant/admin/org-save`
 
@@ -953,7 +953,7 @@ POST `/api/tenant/admin/org-save`
 | description | body | string | 否 | 描述 |
 | leaderUserId | body | string \| null | 否 | 部门负责人（传 null 清空） |
 
-#### 批量导入组织与用户
+##### 批量导入组织与用户
 
 POST `/api/tenant/admin/org-batch-import`
 
@@ -969,9 +969,9 @@ body 须含 tenantId。
 
 ---
 
-### 管理员 - 用户管理 API
+#### 管理员 - 用户管理 API
 
-#### 创建租户用户
+##### 创建租户用户
 
 POST `/api/tenant/admin/user-create`
 
@@ -987,7 +987,7 @@ POST `/api/tenant/admin/user-create`
 | phone | body | string | 否 | 手机号，默认空 |
 | description | body | string | 否 | 描述，默认空 |
 
-#### 编辑租户用户
+##### 编辑租户用户
 
 POST `/api/tenant/admin/user-save`
 
@@ -1004,7 +1004,7 @@ POST `/api/tenant/admin/user-save`
 | phone | body | string | 否 | 手机号 |
 | description | body | string | 否 | 描述 |
 
-#### 删除租户用户
+##### 删除租户用户
 
 POST `/api/tenant/admin/user-remove`
 
@@ -1013,7 +1013,7 @@ POST `/api/tenant/admin/user-remove`
 | id | body | string | 是 | 用户 ID |
 | tenantId | body | string | 是 | 租户 ID |
 
-#### 租户用户列表
+##### 租户用户列表
 
 GET `/api/tenant/admin/user-list`
 
@@ -1024,7 +1024,7 @@ GET `/api/tenant/admin/user-list`
 | perPage | query | number | 否 | 20 | 每页数量 |
 | currentPage | query | number | 否 | 1 | 当前页码 |
 
-#### 获取租户用户详情
+##### 获取租户用户详情
 
 GET `/api/tenant/admin/user-detail`
 
@@ -1033,7 +1033,7 @@ GET `/api/tenant/admin/user-detail`
 | id | query | string | 是 | 用户 ID |
 | tenantId | query | string | 是 | 租户 ID |
 
-#### 修改租户用户状态
+##### 修改租户用户状态
 
 POST `/api/tenant/admin/user-set-status`
 
@@ -1043,7 +1043,7 @@ POST `/api/tenant/admin/user-set-status`
 | id | body | string | 是 | 用户 ID |
 | status | body | string | 是 | 状态：open / closed |
 
-#### 查看租户用户权限列表
+##### 查看租户用户权限列表
 
 GET `/api/tenant/admin/user-permission-list`
 
@@ -1052,7 +1052,7 @@ GET `/api/tenant/admin/user-permission-list`
 | tenantId | query | string | 是 | 租户 ID |
 | id | query | string | 是 | 用户 ID |
 
-#### 获取用户邀请链接
+##### 获取用户邀请链接
 
 GET `/api/tenant/admin/user-invite-token`
 
@@ -1061,7 +1061,7 @@ GET `/api/tenant/admin/user-invite-token`
 | tenantId | query | string | 是 | 租户 ID |
 | id | query | string | 是 | 用户 ID |
 
-#### 发送邀请租户消息
+##### 发送邀请租户消息
 
 POST `/api/tenant/admin/send-invite-message`
 
@@ -1072,9 +1072,9 @@ POST `/api/tenant/admin/send-invite-message`
 
 ---
 
-### 管理员 - 角色管理 API
+#### 管理员 - 角色管理 API
 
-#### 创建租户角色
+##### 创建租户角色
 
 POST `/api/tenant/admin/role/create`
 
@@ -1089,7 +1089,7 @@ POST `/api/tenant/admin/role/create`
 | options | body | object | 否 | 扩展配置 |
 | createdTenantUserId | body | string | 否 | 创建者 ID |
 
-#### 租户角色列表
+##### 租户角色列表
 
 GET `/api/tenant/admin/role/list`
 
@@ -1103,7 +1103,7 @@ GET `/api/tenant/admin/role/list`
 | perPage | query | number | 否 | 20 | 每页数量 |
 | currentPage | query | number | 否 | 1 | 当前页码 |
 
-#### 删除租户角色
+##### 删除租户角色
 
 POST `/api/tenant/admin/role/remove`
 
@@ -1112,7 +1112,7 @@ POST `/api/tenant/admin/role/remove`
 | tenantId | body | string | 是 | 租户 ID |
 | id | body | string | 是 | 角色 ID |
 
-#### 修改租户角色状态
+##### 修改租户角色状态
 
 POST `/api/tenant/admin/role/set-status`
 
@@ -1122,7 +1122,7 @@ POST `/api/tenant/admin/role/set-status`
 | id | body | string | 是 | 角色 ID |
 | status | body | string | 是 | 状态：open / closed |
 
-#### 编辑租户角色
+##### 编辑租户角色
 
 POST `/api/tenant/admin/role/save`
 
@@ -1137,7 +1137,7 @@ POST `/api/tenant/admin/role/save`
 | type | body | string | 否 | 类型 |
 | options | body | object | 否 | 扩展配置 |
 
-#### 租户角色权限列表
+##### 租户角色权限列表
 
 GET `/api/tenant/admin/role/permission-list`
 
@@ -1146,7 +1146,7 @@ GET `/api/tenant/admin/role/permission-list`
 | tenantId | query | string | 是 | 租户 ID |
 | id | query | string | 是 | 角色 ID |
 
-#### 保存租户角色权限
+##### 保存租户角色权限
 
 POST `/api/tenant/admin/role/save-permission`
 
@@ -1158,9 +1158,9 @@ POST `/api/tenant/admin/role/save-permission`
 
 ---
 
-### 管理员 - 权限管理 API
+#### 管理员 - 权限管理 API
 
-#### 租户权限列表
+##### 租户权限列表
 
 GET `/api/tenant/admin/permission/list`
 
@@ -1168,7 +1168,7 @@ GET `/api/tenant/admin/permission/list`
 |------|------|------|------|------|
 | tenantId | query | string | 是 | 租户 ID |
 
-#### 保存租户权限
+##### 保存租户权限
 
 POST `/api/tenant/admin/permission/save`
 
@@ -1179,9 +1179,9 @@ POST `/api/tenant/admin/permission/save`
 
 ---
 
-### 管理员 - 共享组 API
+#### 管理员 - 共享组 API
 
-#### 租户共享组列表
+##### 租户共享组列表
 
 GET `/api/tenant/admin/shared_group/list`
 
@@ -1192,7 +1192,7 @@ GET `/api/tenant/admin/shared_group/list`
 | perPage | query | number | 否 | 20 | 每页数量 |
 | currentPage | query | number | 否 | 1 | 当前页码 |
 
-#### 创建租户共享组
+##### 创建租户共享组
 
 POST `/api/tenant/admin/shared_group/create`
 
@@ -1209,7 +1209,7 @@ POST `/api/tenant/admin/shared_group/create`
 | status | body | string | 否 | 状态 |
 | options | body | object | 否 | 扩展字段 |
 
-#### 编辑租户共享组
+##### 编辑租户共享组
 
 POST `/api/tenant/admin/shared_group/save`
 
@@ -1225,7 +1225,7 @@ POST `/api/tenant/admin/shared_group/save`
 | status | body | string | 否 | 状态 |
 | options | body | object | 否 | 扩展字段 |
 
-#### 修改租户共享组状态
+##### 修改租户共享组状态
 
 POST `/api/tenant/admin/shared_group/set-status`
 
@@ -1235,7 +1235,7 @@ POST `/api/tenant/admin/shared_group/set-status`
 | id | body | string | 是 | 共享组 ID |
 | status | body | string | 是 | 状态：open / closed |
 
-#### 删除租户共享组
+##### 删除租户共享组
 
 POST `/api/tenant/admin/shared_group/remove`
 
@@ -1246,7 +1246,7 @@ POST `/api/tenant/admin/shared_group/remove`
 
 ---
 
-### 错误响应
+#### 错误响应
 
 业务错误使用统一格式返回：
 
