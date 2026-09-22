@@ -829,14 +829,19 @@ module.exports = fp(async (fastify, options) => {
           type: 'object',
           properties: {
             tenantId: { type: 'string' },
-            id: { type: 'string' }
+            id: { type: 'string' },
+            platform: { type: 'string', enum: ['wecom', 'dingtalk', 'beisen'] }
           },
           required: ['tenantId', 'id']
         }
       }
     },
     async request => {
-      await services.user.thirdLoginUnbind({ tenantId: request.body.tenantId, id: request.body.id });
+      await services.user.thirdLoginUnbind({
+        tenantId: request.body.tenantId,
+        id: request.body.id,
+        platform: request.body.platform
+      });
       return {};
     }
   );

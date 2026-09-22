@@ -175,6 +175,22 @@ describe('services 扩展（tenant / role / user / company / setting）', () => 
     });
     assert.ok(list.totalCount >= 1);
 
+    const byEmailKeyword = await ctx.ns.services.user.list({
+      tenantId,
+      filter: { keyword: 'li@si' },
+      perPage: 10,
+      currentPage: 1
+    });
+    assert.ok(byEmailKeyword.pageData.some(row => row.id === u.id));
+
+    const byEmailFilter = await ctx.ns.services.user.list({
+      tenantId,
+      filter: { email: 'li@si.com' },
+      perPage: 10,
+      currentPage: 1
+    });
+    assert.ok(byEmailFilter.pageData.some(row => row.id === u.id));
+
     await ctx.ns.services.user.setStatus({ tenantId, id: u.id, status: 'closed' });
     const openOnly = await ctx.ns.services.user.list({
       tenantId,
@@ -194,6 +210,25 @@ describe('services 扩展（tenant / role / user / company / setting）', () => 
     assert.equal(byId.pageData[0].id, u.id);
     await ctx.ns.services.user.setStatus({ tenantId, id: u.id, status: 'open' });
     await ctx.ns.services.user.sendInviteMessage({ tenantId, id: u.id });
+    await ctx.ns.services.user.remove({ tenantId, id: u.id });
+  });
+
+  it('user.list 支持独立 phone 筛选', async () => {
+    const u = await ctx.ns.services.user.create({
+      tenantId,
+      name: '手机用户',
+      email: 'phone-user@example.com',
+      phone: '13800138000',
+      tenantOrgId: null,
+      roles: []
+    });
+    const list = await ctx.ns.services.user.list({
+      tenantId,
+      filter: { phone: '13800138000' },
+      perPage: 10,
+      currentPage: 1
+    });
+    assert.ok(list.pageData.some(row => row.id === u.id));
     await ctx.ns.services.user.remove({ tenantId, id: u.id });
   });
 
