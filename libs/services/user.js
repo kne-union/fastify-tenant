@@ -9,7 +9,16 @@ const { normalizeTenantUserStatus } = require('../utils/normalizeTenantUserStatu
 const { pickOrgIdsFromInput, buildUserOrgMembershipWhere, attachUserOrgDisplay, getUserOrgIds } = require('../utils/tenantOrgIds');
 const findDataScopeByPermissionCode = require('../utils/findDataScopeByPermissionCode');
 const get = require('lodash/get');
-const { mergeThirdLoginOptions, clearThirdLoginOptions, findUserByThirdLoginBinding, findUserBySyncSourceId, assertThirdLoginBindingConflict, getThirdLoginFromOptions } = require('../utils/thirdLoginBinding');
+const {
+  mergeThirdLoginOptions,
+  clearThirdLoginOptions,
+  findUserByThirdLoginBinding,
+  findUserBySyncSourceId,
+  assertThirdLoginBindingConflict,
+  getThirdLoginFromOptions,
+  listThirdLoginBindings,
+  assertCanUnbindThirdLogin
+} = require('../utils/thirdLoginBinding');
 
 module.exports = fp(async (fastify, options) => {
   const { models, services } = fastify[options.name];
@@ -238,7 +247,16 @@ module.exports = fp(async (fastify, options) => {
     const keyword = filter.keyword != null ? String(filter.keyword).trim() : '';
     if (keyword) {
       const escaped = escapeLike(keyword);
-      whereQuery[Op.or] = [{ name: { [Op.like]: `%${escaped}%` } }, { description: { [Op.like]: `%${escaped}%` } }];
+      const like = { [Op.like]: `%${escaped}%` };
+      whereQuery[Op.or] = [{ name: like }, { email: like }, { phone: like }, { description: like }];
+    }
+    const email = filter.email != null ? String(filter.email).trim() : '';
+    if (email) {
+      whereQuery.email = { [Op.like]: `%${escapeLike(email)}%` };
+    }
+    const phone = filter.phone != null ? String(filter.phone).trim() : '';
+    if (phone) {
+      whereQuery.phone = { [Op.like]: `%${escapeLike(phone)}%` };
     }
     const statusFilter = normalizeTenantUserStatus(filter.status);
     if (statusFilter) {
@@ -640,7 +658,7 @@ module.exports = fp(async (fastify, options) => {
     const bindSourceId = String(thirdLoginResult.oauthUserId || thirdLoginResult.id);
     const syncLookupId = String(thirdLoginResult.id);
 
-    // 1) Already bound: options.thirdLogin.platform + OAuth userid
+    // 1) Already bound: options.thirdLogin[platform].sourceId
     let user = await findUserByThirdLoginBinding({
       models,
       tenantId,
@@ -669,7 +687,7 @@ module.exports = fp(async (fastify, options) => {
       throw new Error('用户不存在或未绑定');
     }
 
-    const existingBinding = getThirdLoginFromOptions(user.options);
+    const existingBinding = getThirdLoginFromOptions(user.options, platform);
     if (!existingBinding) {
       await assertThirdLoginBindingConflict({
         models,
@@ -679,7 +697,7 @@ module.exports = fp(async (fastify, options) => {
         excludeUserId: user.id
       });
       user.options = mergeThirdLoginOptions(user.options, platform, bindSourceId);
-    } else if (existingBinding.platform !== platform || existingBinding.sourceId !== bindSourceId) {
+    } else if (existingBinding.sourceId !== bindSourceId) {
       throw new Error('当前用户已绑定其他第三方账号');
     }
 
@@ -814,15 +832,36 @@ module.exports = fp(async (fastify, options) => {
     };
   };
 
-  const thirdLoginUnbind = async ({ tenantId, id, tenantUserId }) => {
+  const thirdLoginUnbind = async ({ tenantId, id, tenantUserId, platform }) => {
     const targetUserId = id || tenantUserId;
     if (!targetUserId) {
       throw new Error('用户ID不能为空');
     }
     const tenantUser = await detail({ tenantId, id: targetUserId });
-    await tenantUser.update({
-      options: clearThirdLoginOptions(tenantUser.options)
+
+    if (platform) {
+      assertCanUnbindThirdLogin({ user: tenantUser, platform });
+      await tenantUser.update({
+        options: clearThirdLoginOptions(tenantUser.options, platform)
+      });
+      return {};
+    }
+
+    const bindings = listThirdLoginBindings(tenantUser.options);
+    const locked = tenantUser.syncSource ? String(tenantUser.syncSource) : null;
+    const removable = bindings.filter(item => !locked || item.platform !== locked);
+    if (removable.length === 0) {
+      if (locked && bindings.some(item => item.platform === locked)) {
+        throw new Error('来源渠道不可解绑');
+      }
+      return {};
+    }
+
+    let nextOptions = tenantUser.options;
+    removable.forEach(item => {
+      nextOptions = clearThirdLoginOptions(nextOptions, item.platform);
     });
+    await tenantUser.update({ options: nextOptions });
     return {};
   };
 

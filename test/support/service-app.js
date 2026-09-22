@@ -366,6 +366,14 @@ async function buildServiceApp() {
           const pat = String(cond.name[Op.like]).replace(/%/g, '');
           return u.name && u.name.includes(pat);
         }
+        if (cond.email?.[Op.like]) {
+          const pat = String(cond.email[Op.like]).replace(/%/g, '');
+          return (u.email || '').includes(pat);
+        }
+        if (cond.phone?.[Op.like]) {
+          const pat = String(cond.phone[Op.like]).replace(/%/g, '');
+          return (u.phone || '').includes(pat);
+        }
         if (cond.description?.[Op.like]) {
           const pat = String(cond.description[Op.like]).replace(/%/g, '');
           return (u.description || '').includes(pat);
@@ -418,17 +426,36 @@ async function buildServiceApp() {
             return false;
           }
         }
+        if (where.email?.[Op.like]) {
+          const pat = String(where.email[Op.like]).replace(/%/g, '');
+          if (!(u.email || '').includes(pat)) {
+            return false;
+          }
+        } else if (where.email != null && where.email !== u.email) {
+          return false;
+        }
+        if (where.phone?.[Op.like]) {
+          const pat = String(where.phone[Op.like]).replace(/%/g, '');
+          if (!(u.phone || '').includes(pat)) {
+            return false;
+          }
+        } else if (where.phone != null && where.phone !== u.phone) {
+          return false;
+        }
         for (const [k, v] of Object.entries(where)) {
           if (k === 'tenantId' || k === String(Op.and) || k === String(Op.or)) {
             continue;
           }
-          if (k === 'roles' || k === 'id' || k === 'tenantOrgIds') {
+          if (k === 'roles' || k === 'id' || k === 'tenantOrgIds' || k === 'email' || k === 'phone') {
             continue;
           }
           if (v && typeof v === 'object' && Array.isArray(v[Op.in])) {
             if (!v[Op.in].includes(u[k])) {
               return false;
             }
+            continue;
+          }
+          if (v && typeof v === 'object' && v[Op.like] != null) {
             continue;
           }
           if (u[k] !== v) {

@@ -1,46 +1,76 @@
-const getThirdLoginFromOptions = options => {
-  const binding = options && options.thirdLogin;
-  if (!binding || !binding.platform || !binding.sourceId) {
+const getThirdLoginMap = options => {
+  const thirdLogin = options && options.thirdLogin;
+  if (!thirdLogin || typeof thirdLogin !== 'object' || Array.isArray(thirdLogin)) {
+    return {};
+  }
+  return thirdLogin;
+};
+
+/** Binding for one platform; requires sourceId. */
+const getThirdLoginFromOptions = (options, platform) => {
+  if (!platform) {
+    return null;
+  }
+  const entry = getThirdLoginMap(options)[String(platform)];
+  if (!entry || entry.sourceId == null || entry.sourceId === '') {
     return null;
   }
   return {
-    platform: String(binding.platform),
-    sourceId: String(binding.sourceId),
-    boundAt: binding.boundAt || null
+    platform: String(platform),
+    sourceId: String(entry.sourceId),
+    boundAt: entry.boundAt || null
   };
+};
+
+const listThirdLoginBindings = options => {
+  const map = getThirdLoginMap(options);
+  return Object.keys(map)
+    .map(platform => getThirdLoginFromOptions(options, platform))
+    .filter(Boolean);
 };
 
 const mergeThirdLoginOptions = (existingOptions, platform, sourceId) => {
   const options = Object.assign({}, existingOptions || {});
-  options.thirdLogin = {
-    platform: String(platform),
+  const map = Object.assign({}, getThirdLoginMap(options));
+  map[String(platform)] = {
     sourceId: String(sourceId),
     boundAt: new Date().toISOString()
   };
+  options.thirdLogin = map;
   return options;
 };
 
-// Only set platform/type for org-sync synced users.
-// Keep them "unbound" (no sourceId) so third-login-result can bind after OAuth verification.
+// Only set unbound type hint for org-sync synced users (no sourceId).
 const mergeThirdLoginTypeOptions = (existingOptions, platform) => {
   const options = Object.assign({}, existingOptions || {});
-  const existingBinding = getThirdLoginFromOptions(options);
-  if (existingBinding) {
+  const key = String(platform);
+  if (getThirdLoginFromOptions(options, key)) {
     // Already bound by OAuth/bindToken; do not let org-sync overwrite binding.
     return options;
   }
 
-  options.thirdLogin = Object.assign({}, options.thirdLogin || {});
-  options.thirdLogin.platform = String(platform);
-  // Ensure unbound state: no sourceId means getThirdLoginFromOptions returns null.
-  delete options.thirdLogin.sourceId;
-  delete options.thirdLogin.boundAt;
+  const map = Object.assign({}, getThirdLoginMap(options));
+  map[key] = Object.assign({}, map[key] || {});
+  delete map[key].sourceId;
+  delete map[key].boundAt;
+  options.thirdLogin = map;
   return options;
 };
 
-const clearThirdLoginOptions = existingOptions => {
+const clearThirdLoginOptions = (existingOptions, platform) => {
   const options = Object.assign({}, existingOptions || {});
-  delete options.thirdLogin;
+  if (!platform) {
+    delete options.thirdLogin;
+    return options;
+  }
+
+  const map = Object.assign({}, getThirdLoginMap(options));
+  delete map[String(platform)];
+  if (Object.keys(map).length === 0) {
+    delete options.thirdLogin;
+  } else {
+    options.thirdLogin = map;
+  }
   return options;
 };
 
@@ -49,10 +79,11 @@ const findUserByThirdLoginBinding = async ({ models, tenantId, platform, sourceI
     where: { tenantId, status }
   });
   const normalizedSourceId = String(sourceId);
+  const normalizedPlatform = String(platform);
   return (
     users.find(user => {
-      const binding = getThirdLoginFromOptions(user.options);
-      return binding && binding.platform === platform && binding.sourceId === normalizedSourceId;
+      const binding = getThirdLoginFromOptions(user.options, normalizedPlatform);
+      return binding && binding.sourceId === normalizedSourceId;
     }) || null
   );
 };
@@ -94,19 +125,32 @@ const assertThirdLoginBindingConflict = async ({ models, tenantId, platform, sou
 
   if (excludeUserId) {
     const currentUser = await models.user.findByPk(excludeUserId);
-    const currentBinding = getThirdLoginFromOptions(currentUser?.options);
-    if (currentBinding && (currentBinding.platform !== platform || currentBinding.sourceId !== String(sourceId))) {
+    const currentBinding = getThirdLoginFromOptions(currentUser?.options, platform);
+    if (currentBinding && currentBinding.sourceId !== String(sourceId)) {
       throw new Error('当前用户已绑定其他第三方账号');
     }
   }
 };
 
+const assertCanUnbindThirdLogin = ({ user, platform }) => {
+  if (!platform) {
+    return;
+  }
+  const syncSource = user?.syncSource;
+  if (syncSource && String(syncSource) === String(platform)) {
+    throw new Error('来源渠道不可解绑');
+  }
+};
+
 module.exports = {
+  getThirdLoginMap,
   getThirdLoginFromOptions,
+  listThirdLoginBindings,
   mergeThirdLoginOptions,
   mergeThirdLoginTypeOptions,
   clearThirdLoginOptions,
   findUserByThirdLoginBinding,
   findUserBySyncSourceId,
-  assertThirdLoginBindingConflict
+  assertThirdLoginBindingConflict,
+  assertCanUnbindThirdLogin
 };
