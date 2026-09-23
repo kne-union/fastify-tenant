@@ -229,6 +229,15 @@ describe('services 扩展（tenant / role / user / company / setting）', () => 
       currentPage: 1
     });
     assert.ok(list.pageData.some(row => row.id === u.id));
+
+    const byCompact = await ctx.ns.services.user.list({
+      tenantId,
+      filter: { phone: '+8613800138000' },
+      perPage: 10,
+      currentPage: 1
+    });
+    assert.ok(byCompact.pageData.some(row => row.id === u.id));
+
     await ctx.ns.services.user.remove({ tenantId, id: u.id });
   });
 

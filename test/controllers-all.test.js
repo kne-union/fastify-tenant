@@ -221,6 +221,33 @@ describe('controllers tenant-permission & tenant-admin-permission', () => {
     await fastify.close();
   });
 
+  it('user-list query 透传 filter.email / filter.phone', async () => {
+    let q;
+    const qs = require('qs');
+    const fastify = Fastify({
+      logger: false,
+      querystringParser: str => qs.parse(str)
+    });
+    const services = createControllerServices({
+      user: {
+        list: async query => {
+          q = query;
+          return { pageData: [], totalCount: 0 };
+        }
+      }
+    });
+    await registerTenantUserController(fastify, 'cuser', prefix, services);
+    const res = await fastify.inject({
+      method: 'GET',
+      url: `${prefix}/user-list?currentPage=1&perPage=10&filter[email]=a@b.com&filter[phone]=13800138000`
+    });
+    assert.equal(res.statusCode, 200);
+    assert.equal(q.filter.email, 'a@b.com');
+    assert.equal(q.filter.phone, '13800138000');
+    assert.equal(q.tenantId, 'tid-1');
+    await fastify.close();
+  });
+
   it('admin permission save 调用 services.permission.save', async () => {
     let body;
     const fastify = Fastify({ logger: false });
