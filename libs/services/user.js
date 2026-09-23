@@ -1,7 +1,7 @@
 const fp = require('fastify-plugin');
 const { Forbidden } = require('http-errors');
 const { BusinessError } = require('../utils/errors');
-const { normalizePhone } = require('../utils/phone');
+const { normalizePhone, resolvePhoneFilterPattern } = require('../utils/phone');
 const { escapeLike } = require('../utils/escapeLike');
 const { collectOrgSubtreeIds } = require('../utils/dataScopeOrgIds');
 const { buildOrgNamePath } = require('../utils/orgPath');
@@ -242,19 +242,35 @@ module.exports = fp(async (fastify, options) => {
     return tenantUserDefault;
   };
 
+  const coerceFilterString = raw => {
+    if (raw == null || raw === '') {
+      return '';
+    }
+    if (typeof raw === 'object') {
+      const v = raw.value ?? raw.email ?? '';
+      return v == null ? '' : String(v).trim();
+    }
+    return String(raw).trim();
+  };
+
   const list = async ({ tenantId, filter = {}, perPage, currentPage }) => {
     const whereQuery = { tenantId };
-    const keyword = filter.keyword != null ? String(filter.keyword).trim() : '';
+    const keyword = coerceFilterString(filter.keyword);
     if (keyword) {
       const escaped = escapeLike(keyword);
       const like = { [Op.like]: `%${escaped}%` };
-      whereQuery[Op.or] = [{ name: like }, { email: like }, { phone: like }, { description: like }];
+      const orConditions = [{ name: like }, { email: like }, { phone: like }, { description: like }];
+      const phoneFromKeyword = resolvePhoneFilterPattern(keyword);
+      if (phoneFromKeyword && phoneFromKeyword !== keyword) {
+        orConditions.push({ phone: { [Op.like]: `%${escapeLike(phoneFromKeyword)}%` } });
+      }
+      whereQuery[Op.or] = orConditions;
     }
-    const email = filter.email != null ? String(filter.email).trim() : '';
+    const email = coerceFilterString(filter.email);
     if (email) {
       whereQuery.email = { [Op.like]: `%${escapeLike(email)}%` };
     }
-    const phone = filter.phone != null ? String(filter.phone).trim() : '';
+    const phone = resolvePhoneFilterPattern(filter.phone);
     if (phone) {
       whereQuery.phone = { [Op.like]: `%${escapeLike(phone)}%` };
     }

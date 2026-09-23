@@ -408,6 +408,13 @@ GET `/api/tenant/user-list`
 | 参数 | 位置 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|------|--------|------|
 | filter | query | object | 否 | - | 过滤条件 |
+| filter.keyword | query | string | 否 | - | 姓名 / 邮箱 / 手机 / 描述模糊搜索 |
+| filter.email | query | string | 否 | - | 邮箱模糊搜索 |
+| filter.phone | query | string | 否 | - | 手机号模糊搜索（兼容 `138…` / `+86 138…` / `+86138…`） |
+| filter.status | query | string | 否 | - | 状态：open / closed |
+| filter.tenantOrgId | query | string | 否 | - | 组织 ID（含下级） |
+| filter.roles | query | string \| string[] | 否 | - | 角色 ID |
+| filter.id / filter.ids | query | string \| string[] | 否 | - | 用户 ID |
 | perPage | query | number | 否 | 20 | 每页数量 |
 | currentPage | query | number | 否 | 1 | 当前页码 |
 

@@ -48,6 +48,57 @@ function normalizePhone(raw) {
   return `+86 ${digits}`;
 }
 
+/**
+ * 将筛选输入转为可对入库手机号（`+86 1xxxxxxxxxx`）做 LIKE 的片段。
+ * 入库带空格，前端常传 `+86138…`；统一取国内号码数字，避免格式差异导致不命中。
+ * @param {string|object|null|undefined} raw
+ * @returns {string}
+ */
+function resolvePhoneFilterPattern(raw) {
+  if (raw == null || raw === '') {
+    return '';
+  }
+  let input = raw;
+  if (typeof raw === 'object') {
+    const num = raw.value ?? raw.phone ?? raw.number ?? '';
+    const code = raw.code ?? raw.ab;
+    if (num == null || String(num).trim() === '') {
+      return '';
+    }
+    if (code != null && String(code).trim() !== '') {
+      input = `+${String(code).replace(/\D/g, '')}${String(num).trim()}`;
+    } else {
+      input = num;
+    }
+  }
+  const s = String(input).trim();
+  if (!s) {
+    return '';
+  }
+  try {
+    const normalized = normalizePhone(s);
+    if (normalized) {
+      const national = normalized.replace(/^\+\d+\s+/, '');
+      if (national) {
+        return national;
+      }
+    }
+  } catch (_) {
+    // 不完整输入可能无法 normalize，回退到去非数字
+  }
+  let digits = s.replace(/\D/g, '');
+  if (!digits) {
+    return s;
+  }
+  if (digits.startsWith('0086')) {
+    digits = digits.slice(4);
+  } else if (digits.startsWith('86') && digits.length > 11) {
+    digits = digits.slice(2);
+  }
+  return digits;
+}
+
 module.exports = {
-  normalizePhone
+  normalizePhone,
+  resolvePhoneFilterPattern
 };
