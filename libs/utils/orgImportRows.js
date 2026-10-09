@@ -1,6 +1,7 @@
 'use strict';
 
 const { normalizePhone } = require('./phone');
+const { createError } = require('./intl');
 
 const ROW_TYPE_ORG = 'org';
 const ROW_TYPE_USER = 'user';
@@ -52,7 +53,7 @@ function normalizeImportRow(r, index) {
     try {
       phone = normalizePhone(phone);
     } catch (e) {
-      throw new Error(`第 ${rowNum} 条：${e.message}`);
+      throw createError(null, 'importRowError', { row: rowNum, reason: e });
     }
   }
   const description = trimOrNull(r.description);
@@ -73,12 +74,12 @@ function normalizeImportRow(r, index) {
   }
 
   if (!rowType) {
-    throw new Error(`第 ${rowNum} 条：缺少行类型，请使用「组织」「用户」工作表或填写 rowType`);
+    throw createError(null, 'importRowTypeMissing', { row: rowNum });
   }
 
   if (rowType === ROW_TYPE_ORG) {
     if (!orgName) {
-      throw new Error(`第 ${rowNum} 条：组织行须填写组织名称`);
+      throw createError(null, 'importOrgNameRequired', { row: rowNum });
     }
     return {
       skip: false,
@@ -97,13 +98,13 @@ function normalizeImportRow(r, index) {
   }
 
   if (!orgName) {
-    throw new Error(`第 ${rowNum} 条：用户行须填写所属组织名称`);
+    throw createError(null, 'importUserOrgRequired', { row: rowNum });
   }
   if (!userName) {
-    throw new Error(`第 ${rowNum} 条：用户行须填写用户姓名`);
+    throw createError(null, 'importUserNameRequired', { row: rowNum });
   }
   if (!email && !phone) {
-    throw new Error(`第 ${rowNum} 条：用户行须填写邮箱或手机至少一项`);
+    throw createError(null, 'importUserContactRequired', { row: rowNum });
   }
 
   return {
@@ -131,7 +132,7 @@ function normalizeImportRows(rows) {
     }
   }
   if (!effective.length) {
-    throw new Error('没有可导入的数据行');
+    throw createError(null, 'importNoRows');
   }
   return effective;
 }

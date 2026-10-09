@@ -3,6 +3,7 @@ const groupBy = require('lodash/groupBy');
 const transform = require('lodash/transform');
 const get = require('lodash/get');
 const { withTransaction } = require('../utils/withTransaction');
+const { createError } = require('../utils/intl');
 
 module.exports = fp(async (fastify, options) => {
   const { models } = fastify[options.name];
@@ -12,7 +13,7 @@ module.exports = fp(async (fastify, options) => {
       let setting = await detail({ tenantId });
       args.forEach(({ key }) => {
         if ((setting.args || []).find(item => item.key === key)) {
-          throw new Error(`环境变量${key}已存在，请先删除后再添加新的值`);
+          throw createError(null, 'envVariableExists', { key });
         }
       });
       const { secrets, args: targetArgs } = groupBy(args, item => (item.secret ? 'secrets' : 'args'));
@@ -86,7 +87,7 @@ module.exports = fp(async (fastify, options) => {
     });
 
     if ((setting.customComponents || []).find(item => item.key === customComponent.key)) {
-      throw new Error(`自定义组件${customComponent.key}已存在，请先删除后再添加新的值`);
+      throw createError(null, 'customComponentExists', { key: customComponent.key });
     }
 
     setting.customComponents = [...(setting.customComponents || []), Object.assign({}, customComponent, { content: customComponentItem.id })];
@@ -98,7 +99,7 @@ module.exports = fp(async (fastify, options) => {
     const setting = await detail({ tenantId });
     const customComponentItemIndex = setting.customComponents.findIndex(item => item.key === key);
     if (customComponentItemIndex === -1) {
-      throw new Error('自定义组件不存在');
+      throw createError(null, 'customComponentNotFound');
     }
     const customComponentItem = setting.customComponents[customComponentItemIndex];
     const customComponentInstance = await models.customComponent.findByPk(customComponentItem.content);
@@ -117,7 +118,7 @@ module.exports = fp(async (fastify, options) => {
     const customComponentItemIndex = setting.customComponents.findIndex(item => item.key === customComponent.key);
 
     if (customComponentItemIndex === -1) {
-      throw new Error('自定义组件不存在');
+      throw createError(null, 'customComponentNotFound');
     }
     const customComponentItem = setting.customComponents[customComponentItemIndex];
     const customComponentInstance = await models.customComponent.findByPk(customComponentItem.content);
@@ -139,7 +140,7 @@ module.exports = fp(async (fastify, options) => {
     const setting = await detail({ tenantId });
     const customComponentItem = (setting?.customComponents || []).find(item => item.key === key);
     if (!customComponentItem) {
-      throw new Error(`${key}已不存在`);
+      throw createError(null, 'settingKeyNotFound', { key });
     }
     return await models.customComponent.findByPk(customComponentItem.content);
   };
@@ -148,7 +149,7 @@ module.exports = fp(async (fastify, options) => {
     let setting = await detail({ tenantId });
     const customComponentIndex = (setting?.customComponents || []).findIndex(item => item.key === key);
     if (customComponentIndex === -1) {
-      throw new Error(`${key}已不存在`);
+      throw createError(null, 'settingKeyNotFound', { key });
     }
     const customComponentId = setting.customComponents[customComponentIndex].content;
     const newCustomComponents = setting.customComponents.slice(0);
@@ -165,7 +166,7 @@ module.exports = fp(async (fastify, options) => {
   const detail = async ({ tenantId }) => {
     const tenant = await models.tenant.findByPk(tenantId);
     if (!tenant) {
-      throw new Error('租户不存在');
+      throw createError(null, 'tenantNotFound');
     }
     const setting = await models.setting.findOne({
       attributes: ['id', 'args', 'customComponents', 'permissions', 'options'],
@@ -196,7 +197,7 @@ module.exports = fp(async (fastify, options) => {
       const setting = await detail({ tenantId });
       const argIndex = (setting?.args || []).findIndex(item => item.key === key);
       if (argIndex === -1) {
-        throw new Error(`${key}已不存在`);
+        throw createError(null, 'settingKeyNotFound', { key });
       }
       const arg = setting.args[argIndex];
 

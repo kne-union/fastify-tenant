@@ -1,6 +1,7 @@
 const fp = require('fastify-plugin');
 const get = require('lodash/get');
 const { resolveLinkedTargetProps } = require('../utils/resolveLinkedTargetProps');
+const { createError } = require('../utils/intl');
 
 module.exports = fp(async (fastify, options) => {
   const { models } = fastify[options.name];
@@ -55,12 +56,12 @@ module.exports = fp(async (fastify, options) => {
     if (targetId) {
       record = records.find(item => get(item, 'config.targetId') === targetId);
       if (!record) {
-        throw new Error('未找到对应的第三方登录配置');
+        throw createError(null, 'thirdLoginConfigNotFound');
       }
     } else if (records.length === 1) {
       record = records[0];
     } else {
-      throw new Error('请指定第三方登录配置 targetId');
+      throw createError(null, 'thirdLoginTargetRequired');
     }
 
     const tenantSetting = await fastify.tenant.services.setting.detail({ tenantId });
@@ -76,7 +77,7 @@ module.exports = fp(async (fastify, options) => {
 
   const saveConfig = async ({ tenantId, source, targetId }) => {
     if (!targetId) {
-      throw new Error('targetId不能为空');
+      throw createError(null, 'targetIdRequired');
     }
 
     const [record, created] = await models.thirdLogin.findOrCreate({
@@ -103,7 +104,7 @@ module.exports = fp(async (fastify, options) => {
 
   const cancelConfig = async ({ tenantId, source, targetId }) => {
     if (!targetId) {
-      throw new Error('targetId不能为空');
+      throw createError(null, 'targetIdRequired');
     }
 
     const record = await models.thirdLogin.findOne({

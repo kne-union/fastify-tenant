@@ -1,5 +1,5 @@
 const fp = require('fastify-plugin');
-const { BusinessError } = require('../utils/errors');
+const { createBusinessError } = require('../utils/intl');
 
 module.exports = fp(async (fastify, options) => {
   const { services, authenticate } = fastify[options.name];
@@ -226,7 +226,7 @@ module.exports = fp(async (fastify, options) => {
     },
     async request => {
       if (!request.userInfo.id) {
-        throw new BusinessError(500, '无法获取用户信息');
+        throw createBusinessError(500, 'userInfoUnavailable');
       }
       await services.user.join(request.userInfo, request.body);
       return {};
@@ -243,7 +243,7 @@ module.exports = fp(async (fastify, options) => {
     },
     async request => {
       if (!request.userInfo.id) {
-        throw new BusinessError(500, '无法获取用户信息');
+        throw createBusinessError(500, 'userInfoUnavailable');
       }
       return services.user.tenantList(request.userInfo);
     }
@@ -267,7 +267,7 @@ module.exports = fp(async (fastify, options) => {
     },
     async request => {
       if (!request.userInfo.id) {
-        throw new BusinessError(500, '无法获取用户信息');
+        throw createBusinessError(500, 'userInfoUnavailable');
       }
       await services.user.setDefaultTenant(request.userInfo, request.body);
       return {};

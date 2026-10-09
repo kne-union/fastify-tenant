@@ -1,6 +1,7 @@
 const fp = require('fastify-plugin');
 const { getSequelize } = require('../utils/sequelize');
 const { escapeLike } = require('../utils/escapeLike');
+const { createError } = require('../utils/intl');
 
 const USER_LIST_ATTRS = ['id', 'name', 'email', 'phone', 'avatar', 'status'];
 
@@ -18,20 +19,20 @@ module.exports = fp(async (fastify, options) => {
       transaction
     });
     if (n !== ids.length) {
-      throw new Error('租户用户不存在或不属于当前租户');
+      throw createError(null, 'tenantUserNotInTenant');
     }
   };
 
   const assertSharedModulesShape = sharedModules => {
     if (!Array.isArray(sharedModules)) {
-      throw new Error('sharedModules 须为数组');
+      throw createError(null, 'sharedModulesMustBeArray');
     }
     for (const item of sharedModules) {
       if (!item || typeof item.moduleCode !== 'string' || !item.moduleCode.trim()) {
-        throw new Error('sharedModules 每项须包含非空 moduleCode');
+        throw createError(null, 'sharedModuleCodeRequired');
       }
       if (!['read', 'write'].includes(item.access)) {
-        throw new Error('sharedModules 每项 access 须为 read 或 write');
+        throw createError(null, 'sharedModuleAccessInvalid');
       }
     }
   };
@@ -59,14 +60,14 @@ module.exports = fp(async (fastify, options) => {
       transaction
     });
     if (!row) {
-      throw new Error('共享组不存在');
+      throw createError(null, 'sharedGroupNotFound');
     }
     return row;
   };
 
   const create = async ({ tenantId, name, description, sharedModules = [], dataSourceTenantUserIds = [], memberTenantUserIds = [], createdTenantUserId, options: extraOptions, transaction: outerTransaction }) => {
     if (!name || !String(name).trim()) {
-      throw new Error('共享组名称不能为空');
+      throw createError(null, 'sharedGroupNameRequired');
     }
     assertSharedModulesShape(sharedModules);
     await services.tenant.detail({ id: tenantId, withTenantSetting: false });
@@ -143,7 +144,7 @@ module.exports = fp(async (fastify, options) => {
       if (name !== undefined) {
         patch.name = String(name).trim();
         if (!patch.name) {
-          throw new Error('共享组名称不能为空');
+          throw createError(null, 'sharedGroupNameRequired');
         }
       }
       if (description !== undefined) {

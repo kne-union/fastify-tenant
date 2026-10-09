@@ -140,7 +140,7 @@ module.exports = fp(async (fastify, options) => {
       }
     },
     async request => {
-      return await services.role.permissionList(Object.assign({}, request.query, { tenantId: request.tenantUserInfo.tenantId }));
+      return fastify[options.name].translator.withTranslatedPermissions(request, await services.role.permissionList(Object.assign({}, request.query, { tenantId: request.tenantUserInfo.tenantId })));
     }
   );
 
@@ -183,7 +183,7 @@ module.exports = fp(async (fastify, options) => {
       }
     },
     async request => {
-      return await services.permission.list({ tenantId: request.tenantUserInfo.tenantId });
+      return fastify[options.name].translator.withTranslatedPermissions(request, await services.permission.list({ tenantId: request.tenantUserInfo.tenantId }));
     }
   );
 });

@@ -39,6 +39,7 @@ module.exports = fp(async (fastify, options) => {
       tenantId: tenant.id,
       permissions: codes.filter(code => allPermissionSet.has(code))
     });
+    await services.permissionChange?.notify({ tenantId: tenant.id, reason: 'tenant-permissions' });
   };
 
   Object.assign(fastify[options.name].services, {

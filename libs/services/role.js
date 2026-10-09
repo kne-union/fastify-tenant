@@ -1,5 +1,5 @@
 const fp = require('fastify-plugin');
-const { BusinessError } = require('../utils/errors');
+const { createError, createBusinessError } = require('../utils/intl');
 const { escapeLike } = require('../utils/escapeLike');
 
 module.exports = fp(async (fastify, options) => {
@@ -93,7 +93,7 @@ module.exports = fp(async (fastify, options) => {
       }
     });
     if (!role) {
-      throw new BusinessError('ROLE_NOT_FOUND', '角色不存在', 404);
+      throw createBusinessError('ROLE_NOT_FOUND', 'roleNotFound', null, 404);
     }
     return role;
   };
@@ -101,15 +101,17 @@ module.exports = fp(async (fastify, options) => {
   const save = async ({ tenantId, id, ...data }) => {
     const role = await detail({ id, tenantId });
     if (role.type === 'system') {
-      throw new BusinessError('ROLE_SYSTEM_IMMUTABLE', '系统角色不能修改');
+      throw createBusinessError('ROLE_SYSTEM_IMMUTABLE', 'roleSystemImmutable');
     }
-    return await role.update(data);
+    const result = await role.update(data);
+    await services.permissionChange?.notify({ tenantId, roleKeys: [role.id, role.code], reason: 'role-save' });
+    return result;
   };
 
   const remove = async ({ tenantId, id }) => {
     const role = await detail({ id, tenantId });
     if (role.type === 'system') {
-      throw new BusinessError('ROLE_SYSTEM_IMMUTABLE', '系统角色不能删除');
+      throw createBusinessError('ROLE_SYSTEM_IMMUTABLE', 'roleSystemNotRemovable');
     }
 
     if (
@@ -122,7 +124,7 @@ module.exports = fp(async (fastify, options) => {
         }
       })) > 0
     ) {
-      throw new BusinessError('ROLE_IN_USE', '角色已被用户关联，不能删除');
+      throw createBusinessError('ROLE_IN_USE', 'roleInUse');
     }
     return await role.destroy();
   };
@@ -130,9 +132,11 @@ module.exports = fp(async (fastify, options) => {
   const setStatus = async ({ tenantId, id, status }) => {
     const role = await detail({ id, tenantId });
     if (role.type === 'system') {
-      throw new BusinessError('ROLE_SYSTEM_IMMUTABLE', '系统角色不能修改');
+      throw createBusinessError('ROLE_SYSTEM_IMMUTABLE', 'roleSystemImmutable');
     }
-    return await role.update({ status });
+    const result = await role.update({ status });
+    await services.permissionChange?.notify({ tenantId, roleKeys: [role.id, role.code], reason: 'role-status' });
+    return result;
   };
 
   const permissionList = async ({ tenantId, id }) => {
@@ -144,7 +148,7 @@ module.exports = fp(async (fastify, options) => {
       }
     });
     if (!role) {
-      throw new BusinessError('ROLE_NOT_FOUND', '角色不存在', 404);
+      throw createBusinessError('ROLE_NOT_FOUND', 'roleNotFound', null, 404);
     }
     const allowed = new Set(tenantPermissions.codes);
     return {
@@ -201,6 +205,7 @@ module.exports = fp(async (fastify, options) => {
     const tenantPermissions = await services.permission.tenantLevelList({ tenantId });
     const allowed = new Set(tenantPermissions.codes);
     await role.update({ permissions: permissions.filter(code => allowed.has(code)) });
+    await services.permissionChange?.notify({ tenantId, roleKeys: [role.id, role.code], reason: 'role-permissions' });
     return role;
   };
 
@@ -211,7 +216,7 @@ module.exports = fp(async (fastify, options) => {
     }
     const tenantExists = await models.tenant.findByPk(tenantId, { attributes: ['id'] });
     if (!tenantExists) {
-      throw new Error('租户不存在');
+      throw createError(null, 'tenantNotFound');
     }
     return await models.role.findAll({
       where: {

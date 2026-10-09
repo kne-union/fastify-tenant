@@ -1,6 +1,6 @@
 {
   "name": "@kne/fastify-tenant",
-  "version": "1.0.0-alpha.52",
+  "version": "1.0.0-alpha.53",
   "description": "用于实现一个租户系统",
   "main": "index.js",
   "scripts": {
@@ -44,7 +44,7 @@
   "devDependencies": {
     "@fastify/env": "^5.0.2",
     "@kne/fastify-account": "^2.0.4",
-    "@kne/fastify-namespace": "^1.1.2",
+    "@kne/fastify-namespace": "^1.2.1",
     "@kne/fastify-response-data-format": "^1.0.0",
     "@kne/fastify-sequelize": "^4.0.0",
     "fastify": "^5.4.0",
@@ -59,6 +59,7 @@
     "sqlite3": "^5.1.7"
   },
   "dependencies": {
+    "@kne/fastify-intl": "^0.1.5",
     "http-errors": "^2.0.1",
     "js-yaml": "^4.1.1",
     "lodash": "^4.17.21"

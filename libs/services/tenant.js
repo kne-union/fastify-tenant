@@ -1,6 +1,7 @@
 const fp = require('fastify-plugin');
 const pick = require('lodash/pick');
 const { escapeLike } = require('../utils/escapeLike');
+const { createError } = require('../utils/intl');
 
 const DEFAULT_FOLDER_TYPE = 'admin-file-system';
 const PENDING_LOGO_PATH = 'Tenant/_pending';
@@ -126,15 +127,15 @@ module.exports = fp(async (fastify, options) => {
 
   const saveLanguages = async ({ tenantId, supportLanguage, defaultLanguage }) => {
     if (!Array.isArray(supportLanguage) || supportLanguage.length === 0) {
-      throw new Error('支持语言列表不能为空');
+      throw createError(null, 'languagesRequired');
     }
     const languages = supportLanguage.map(item => String(item)).filter(Boolean);
     if (languages.length === 0) {
-      throw new Error('支持语言列表不能为空');
+      throw createError(null, 'languagesRequired');
     }
     const defaultLang = defaultLanguage ? String(defaultLanguage) : languages[0];
     if (!languages.includes(defaultLang)) {
-      throw new Error('默认语言必须在支持语言列表中');
+      throw createError(null, 'defaultLanguageNotSupported');
     }
     const tenant = await detail({ id: tenantId, withTenantSetting: false });
     await tenant.update({
@@ -193,7 +194,7 @@ module.exports = fp(async (fastify, options) => {
       include: [models.company]
     });
     if (!tenant) {
-      throw new Error('租户不存在');
+      throw createError(null, 'tenantNotFound');
     }
     if (withTenantSetting) {
       const tenantSetting = await services.setting.detail({ tenantId: tenant.id });
@@ -205,6 +206,7 @@ module.exports = fp(async (fastify, options) => {
   const setStatus = async ({ id, status }) => {
     const tenant = await detail({ id, withTenantSetting: false });
     await tenant.update({ status });
+    await services.permissionChange?.notify({ tenantId: tenant.id, reason: 'tenant-status' });
     return tenant;
   };
 

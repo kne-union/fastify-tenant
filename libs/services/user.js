@@ -1,6 +1,6 @@
 const fp = require('fastify-plugin');
 const { Forbidden } = require('http-errors');
-const { BusinessError } = require('../utils/errors');
+const { createError, createBusinessError } = require('../utils/intl');
 const { normalizePhone, resolvePhoneFilterPattern } = require('../utils/phone');
 const { escapeLike } = require('../utils/escapeLike');
 const { collectOrgSubtreeIds } = require('../utils/dataScopeOrgIds');
@@ -33,20 +33,20 @@ module.exports = fp(async (fastify, options) => {
   const create = async ({ tenantId, avatar, name, email, phone: phoneRaw, description, tenantOrgIds: tenantOrgIdsInput, roles, options, transaction, synced, syncSource, sourceId }) => {
     const phone = phoneRaw ? normalizePhone(phoneRaw) : phoneRaw;
     if (email && !synced && (await models.user.count({ where: { email, tenantId }, transaction })) > 0) {
-      throw new BusinessError('USER_EMAIL_DUPLICATE', '邮箱不能重复');
+      throw createBusinessError('USER_EMAIL_DUPLICATE', 'emailDuplicate');
     }
     if (phone && !synced && (await models.user.count({ where: { phone, tenantId }, transaction })) > 0) {
-      throw new BusinessError('USER_PHONE_DUPLICATE', '手机号不能重复');
+      throw createBusinessError('USER_PHONE_DUPLICATE', 'phoneDuplicate');
     }
     if (!synced && !email && !phone) {
-      throw new BusinessError('USER_CONTACT_REQUIRED', '手机号或邮箱不能同时为空');
+      throw createBusinessError('USER_CONTACT_REQUIRED', 'contactRequired');
     }
 
     let tenant;
     if (transaction) {
       tenant = await models.tenant.findByPk(tenantId, { transaction });
       if (!tenant) {
-        throw new Error('租户不存在');
+        throw createError(null, 'tenantNotFound');
       }
     } else {
       tenant = await services.tenant.detail({ id: tenantId, withTenantSetting: false });
@@ -57,7 +57,7 @@ module.exports = fp(async (fastify, options) => {
     });
 
     if (currentCount >= tenant.accountCount) {
-      throw new Error('租户用户数量已达到上限');
+      throw createError(null, 'tenantUserLimitReached');
     }
 
     const tenantOrgIds = pickOrgIdsFromInput({ tenantOrgIds: tenantOrgIdsInput });
@@ -92,10 +92,10 @@ module.exports = fp(async (fastify, options) => {
       include: [models.tenant]
     });
     if (!tenantUser) {
-      throw new Error('租户用户不存在');
+      throw createError(null, 'tenantUserNotFound');
     }
     if (tenantUser.tenantId !== tenantId) {
-      throw new Error('租户用户不存在');
+      throw createError(null, 'tenantUserNotFound');
     }
 
     tenantUser.setDataValue(
@@ -120,7 +120,7 @@ module.exports = fp(async (fastify, options) => {
     const { tenantId, id } = payload;
     const tenantUser = await detail({ tenantId, id });
     if (tenantUser.userId) {
-      throw new Error('租户用户已经被关联');
+      throw createError(null, 'tenantUserAlreadyLinked');
     }
     await tenantUser.update({
       userId: authenticatePayload.id
@@ -138,7 +138,7 @@ module.exports = fp(async (fastify, options) => {
     const { token } = await inviteToken({ tenantId, id });
     const name = tenantUser.email || tenantUser.phone;
     if (!name) {
-      throw new Error('邮箱或手机号不能为空');
+      throw createError(null, 'emailOrPhoneRequired');
     }
 
     await fastify.message.services.sendMessage({
@@ -172,11 +172,11 @@ module.exports = fp(async (fastify, options) => {
     const { id, tenantId } = payload;
     const tenantUser = await detail({ tenantId, id });
     if (tenantUser.userId) {
-      throw new Error('当前认证链接已经被使用，请直接登录或者联系管理员');
+      throw createError(null, 'inviteLinkUsed');
     }
 
     if ((await models.user.count({ where: { tenantId, userId: authenticatePayload.id } })) > 0) {
-      throw new Error('当前用户已经绑定过此租户不能重复绑定');
+      throw createError(null, 'tenantAlreadyJoined');
     }
 
     await tenantUser.update({
@@ -223,7 +223,7 @@ module.exports = fp(async (fastify, options) => {
       where: { tenantId: tenantId, userId: authenticatePayload.id }
     });
     if (!tenantUser) {
-      throw new Error('不能进行此操作');
+      throw createError(null, 'operationNotAllowed');
     }
     let tenantUserDefault = await models.userDefault.findOne({
       where: { userId: authenticatePayload.id }
@@ -425,7 +425,7 @@ module.exports = fp(async (fastify, options) => {
     if (permissionCodeTrimmed) {
       const codes = Array.isArray(userPermissionCodes) ? userPermissionCodes : [];
       if (!codes.includes(permissionCodeTrimmed)) {
-        throw new Forbidden('无权访问');
+        throw createError(Forbidden, 'accessDenied');
       }
       if (!resolvedModuleCode) {
         const found = findDataScopeByPermissionCode(fastify[options.name].permissions, permissionCodeTrimmed);
@@ -474,10 +474,11 @@ module.exports = fp(async (fastify, options) => {
   const setStatus = async ({ tenantId, id, status }) => {
     const normalized = normalizeTenantUserStatus(status);
     if (!normalized) {
-      throw new Error('无效的用户状态');
+      throw createError(null, 'tenantUserStatusInvalid');
     }
     const tenantUser = await detail({ tenantId, id });
     await tenantUser.update({ status: normalized });
+    await services.permissionChange?.notify({ tenantId, userIds: [tenantUser.userId], reason: 'tenant-user-status' });
 
     return tenantUser;
   };
@@ -489,16 +490,17 @@ module.exports = fp(async (fastify, options) => {
       phone = normalizePhone(phone);
     }
     if (email && !tenantUser.synced && (await models.user.count({ where: { email, id: { [Op.not]: tenantUser.id }, tenantId } })) > 0) {
-      throw new BusinessError('USER_EMAIL_DUPLICATE', '邮箱不能重复');
+      throw createBusinessError('USER_EMAIL_DUPLICATE', 'emailDuplicate');
     }
     if (phone && !tenantUser.synced && (await models.user.count({ where: { phone, id: { [Op.not]: tenantUser.id }, tenantId } })) > 0) {
-      throw new BusinessError('USER_PHONE_DUPLICATE', '手机号不能重复');
+      throw createBusinessError('USER_PHONE_DUPLICATE', 'phoneDuplicate');
     }
     if (!tenantUser.synced && !email && !phone) {
-      throw new BusinessError('USER_CONTACT_REQUIRED', '手机号或邮箱不能同时为空');
+      throw createBusinessError('USER_CONTACT_REQUIRED', 'contactRequired');
     }
 
     const checkedRoles = await services.role.checkRoles({ tenantId, roles });
+    const rolesChanged = JSON.stringify(tenantUser.roles || []) !== JSON.stringify(checkedRoles || []);
     const previousOrgIds = getUserOrgIds(tenantUser);
     const tenantOrgIds = pickOrgIdsFromInput({ tenantOrgIds: tenantOrgIdsInput });
     if (tenantOrgIds.length) {
@@ -530,6 +532,9 @@ module.exports = fp(async (fastify, options) => {
     }
 
     await tenantUser.update(updateData);
+    if (rolesChanged) {
+      await services.permissionChange?.notify({ tenantId, userIds: [tenantUser.userId], reason: 'tenant-user-roles' });
+    }
 
     return tenantUser;
   };
@@ -538,6 +543,7 @@ module.exports = fp(async (fastify, options) => {
     const tenantUser = await detail({ tenantId, id });
     await models.org.update({ leaderUserId: null }, { where: { leaderUserId: id, tenantId } });
     await tenantUser.destroy();
+    await services.permissionChange?.notify({ tenantId, userIds: [tenantUser.userId], reason: 'tenant-user-remove' });
   };
 
   const permissionList = async ({ tenantId, id }) => {
@@ -547,10 +553,10 @@ module.exports = fp(async (fastify, options) => {
 
   const enrichTenantUserInfo = async tenantUser => {
     if (!tenantUser || tenantUser.status !== 'open') {
-      throw new Forbidden('当前租户用户不存在或账号被关闭');
+      throw createError(Forbidden, 'tenantUserUnavailable');
     }
     if (tenantUser.tenant?.status !== 'open') {
-      throw new Forbidden('租户不能使用');
+      throw createError(Forbidden, 'tenantUnavailable');
     }
 
     const tenantSetting = await services.setting.detail({ tenantId: tenantUser.tenantId });
@@ -580,15 +586,19 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const getTenantUserInfo = async authenticatePayload => {
-    const tenantUserDefault = await models.userDefault.findOne({
-      where: { userId: authenticatePayload.id }
-    });
-    if (!tenantUserDefault) {
-      throw new Forbidden('未设置默认租户');
+    let tenantId = authenticatePayload.tenantId;
+    if (!tenantId) {
+      const tenantUserDefault = await models.userDefault.findOne({
+        where: { userId: authenticatePayload.id }
+      });
+      if (!tenantUserDefault) {
+        throw createError(Forbidden, 'defaultTenantNotSet');
+      }
+      tenantId = tenantUserDefault.tenantId;
     }
     const tenantUser = await models.user.findOne({
       include: tenantUserInclude,
-      where: { tenantId: tenantUserDefault.tenantId, userId: authenticatePayload.id, status: 'open' }
+      where: { tenantId, userId: authenticatePayload.id, status: 'open' }
     });
     return enrichTenantUserInfo(tenantUser);
   };
@@ -622,13 +632,13 @@ module.exports = fp(async (fastify, options) => {
       try {
         payload = fastify.jwt.verify(props.bindToken).payload;
       } catch (e) {
-        throw new Error('绑定链接无效或已过期');
+        throw createError(null, 'bindLinkInvalidOrExpired');
       }
       if (payload.purpose !== 'third-login-bind' || String(payload.tenantId) !== String(tenantId)) {
-        throw new Error('绑定链接无效');
+        throw createError(null, 'bindLinkInvalid');
       }
       if (payload.platform && payload.platform !== platform) {
-        throw new Error('绑定平台与登录平台不一致');
+        throw createError(null, 'bindPlatformMismatch');
       }
 
       const thirdLoginConfig = await services.thirdLogin.getConfig({
@@ -637,14 +647,14 @@ module.exports = fp(async (fastify, options) => {
         targetId: props.targetId || payload.targetId
       });
       if (!thirdLoginConfig.enabled) {
-        throw new Error('未配置该渠道的第三方登录');
+        throw createError(null, 'thirdLoginChannelNotConfigured');
       }
 
       const targetUser = await models.user.findOne({
         where: { id: payload.id, tenantId, status: 'open' }
       });
       if (!targetUser) {
-        throw new Error('用户不存在或已关闭');
+        throw createError(null, 'userNotFoundOrClosed');
       }
 
       await assertThirdLoginBindingConflict({
@@ -667,7 +677,7 @@ module.exports = fp(async (fastify, options) => {
       targetId: props.targetId
     });
     if (!thirdLoginConfig.enabled) {
-      throw new Error('未配置该渠道的第三方登录');
+      throw createError(null, 'thirdLoginChannelNotConfigured');
     }
 
     // 绑定用真实 OAuth userid；查找用 result.id（北森场景下已被改写为 user.sourceId）
@@ -700,7 +710,7 @@ module.exports = fp(async (fastify, options) => {
     }
 
     if (!user) {
-      throw new Error('用户不存在或未绑定');
+      throw createError(null, 'userNotFoundOrUnbound');
     }
 
     const existingBinding = getThirdLoginFromOptions(user.options, platform);
@@ -714,7 +724,7 @@ module.exports = fp(async (fastify, options) => {
       });
       user.options = mergeThirdLoginOptions(user.options, platform, bindSourceId);
     } else if (existingBinding.sourceId !== bindSourceId) {
-      throw new Error('当前用户已绑定其他第三方账号');
+      throw createError(null, 'userBoundOtherThirdAccount');
     }
 
     applyThirdLoginProfile(user, thirdLoginResult);
@@ -725,12 +735,12 @@ module.exports = fp(async (fastify, options) => {
   const getThirdLoginUrl = async ({ tenantId, platform, redirect, bindToken, targetId }) => {
     const tenant = await services.tenant.detail({ id: tenantId });
     if (typeof options?.thirdLogin?.getThirdLoginUrl !== 'function') {
-      throw new Error('租户不支持第三方登录');
+      throw createError(null, 'tenantThirdLoginUnsupported');
     }
 
     const config = await services.thirdLogin.getConfig({ tenantId, type: platform, targetId });
     if (!config.enabled) {
-      throw new Error('未找到有效的第三方登录配置');
+      throw createError(null, 'thirdLoginConfigInvalid');
     }
 
     const configProps = get(config, 'props');
@@ -744,7 +754,7 @@ module.exports = fp(async (fastify, options) => {
       platform === 'dingtalk'
         ? (() => {
             if (!(configProps.corpId && (configProps.client_id || configProps.clientId))) {
-              throw new Error('租户参数配置不完整');
+              throw createError(null, 'tenantParamsIncomplete');
             }
             return `/third-login-result?platform=dingtalk&code=200&message=success&redirect=${redirectQuery}&tenantId=${tenantId}&corpId=${configProps.corpId}&clientId=${configProps.client_id || configProps.clientId}${bindTokenQuery}${targetIdQuery}`;
           })()
@@ -768,10 +778,10 @@ module.exports = fp(async (fastify, options) => {
 
   const getThirdLoginResult = async props => {
     if (!props.tenantId) {
-      throw new Error('租户ID不能为空');
+      throw createError(null, 'tenantIdRequired');
     }
     if (typeof options?.thirdLogin?.getThirdLoginResult !== 'function') {
-      throw new Error('租户不支持第三方登录');
+      throw createError(null, 'tenantThirdLoginUnsupported');
     }
 
     let resultProps = props;
@@ -782,7 +792,7 @@ module.exports = fp(async (fastify, options) => {
         targetId: props.targetId
       });
       if (!config.enabled) {
-        throw new Error('未找到有效的第三方登录配置');
+        throw createError(null, 'thirdLoginConfigInvalid');
       }
       resultProps = Object.assign({}, props, {
         targetId: config.targetId,
@@ -798,7 +808,7 @@ module.exports = fp(async (fastify, options) => {
   const thirdLoginBindToken = async ({ tenantId, id, platform, targetId, tenantUserId }) => {
     const targetUserId = id || tenantUserId;
     if (!targetUserId) {
-      throw new Error('用户ID不能为空');
+      throw createError(null, 'userIdRequired');
     }
 
     await detail({ tenantId, id: targetUserId });
@@ -811,7 +821,7 @@ module.exports = fp(async (fastify, options) => {
         resolvedPlatform = channels[0].source;
         resolvedTargetId = resolvedTargetId || channels[0].targetId;
       } else {
-        throw new Error('请指定第三方登录平台');
+        throw createError(null, 'thirdLoginPlatformRequired');
       }
     }
 
@@ -821,7 +831,7 @@ module.exports = fp(async (fastify, options) => {
       targetId: resolvedTargetId
     });
     if (!config.enabled) {
-      throw new Error('未配置该渠道的第三方登录');
+      throw createError(null, 'thirdLoginChannelNotConfigured');
     }
 
     const token = fastify.jwt.sign(
@@ -851,7 +861,7 @@ module.exports = fp(async (fastify, options) => {
   const thirdLoginUnbind = async ({ tenantId, id, tenantUserId, platform }) => {
     const targetUserId = id || tenantUserId;
     if (!targetUserId) {
-      throw new Error('用户ID不能为空');
+      throw createError(null, 'userIdRequired');
     }
     const tenantUser = await detail({ tenantId, id: targetUserId });
 
@@ -868,7 +878,7 @@ module.exports = fp(async (fastify, options) => {
     const removable = bindings.filter(item => !locked || item.platform !== locked);
     if (removable.length === 0) {
       if (locked && bindings.some(item => item.platform === locked)) {
-        throw new Error('来源渠道不可解绑');
+        throw createError(null, 'sourceChannelNotUnbindable');
       }
       return {};
     }

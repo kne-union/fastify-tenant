@@ -6,6 +6,7 @@ const { orgLevelKey, collectOrgIdsByName } = require('../utils/orgLevel');
 const { buildOrgSubtreeUserCounts } = require('../utils/orgUserCount');
 const { buildUserOrgMembershipWhere, userBelongsToOrg, pickOrgIdsFromInput } = require('../utils/tenantOrgIds');
 const { normalizeLeaderUserId } = require('../utils/normalizeLeaderUserId');
+const { createError } = require('../utils/intl');
 const { withTransaction } = require('../utils/withTransaction');
 
 module.exports = fp(async (fastify, options) => {
@@ -27,7 +28,7 @@ module.exports = fp(async (fastify, options) => {
     }
     const u = await models.user.findByPk(leaderUserId, { transaction });
     if (!u || u.tenantId !== tenantId) {
-      throw new Error('负责人不存在或不属于当前租户');
+      throw createError(null, 'orgLeaderNotInTenant');
     }
     if (!orgId) {
       return;
@@ -42,7 +43,7 @@ module.exports = fp(async (fastify, options) => {
       await u.update({ tenantOrgIds }, { transaction });
       return;
     }
-    throw new Error('负责人必须是当前部门的成员');
+    throw createError(null, 'orgLeaderNotMember');
   };
 
   const list = async ({ tenantId, status }) => {
@@ -83,7 +84,7 @@ module.exports = fp(async (fastify, options) => {
   const detail = async ({ id, transaction } = {}) => {
     const org = await models.org.findByPk(id, { include: [leaderInclude], transaction });
     if (!org) {
-      throw new Error('组织不存在');
+      throw createError(null, 'orgNotFound');
     }
     return org;
   };
@@ -99,14 +100,14 @@ module.exports = fp(async (fastify, options) => {
     }
     const count = await models.org.count({ where, transaction });
     if (count > 0) {
-      throw new Error('同级下已存在相同名称的组织');
+      throw createError(null, 'orgNameDuplicate');
     }
   };
 
   const resolveParentIdByOrgName = async ({ tenantId, parentOrgName, orgPathToId, transaction }) => {
     const batchIds = collectOrgIdsByName(orgPathToId, parentOrgName);
     if (batchIds.length > 1) {
-      throw new Error(`上级组织名称「${parentOrgName}」在本批数据中对应多个节点，无法唯一确定`);
+      throw createError(null, 'importParentOrgAmbiguousInBatch', { name: parentOrgName });
     }
     if (batchIds.length === 1) {
       return batchIds[0];
@@ -116,10 +117,10 @@ module.exports = fp(async (fastify, options) => {
       transaction
     });
     if (dbParents.length === 0) {
-      throw new Error(`找不到上级组织「${parentOrgName}」`);
+      throw createError(null, 'importParentOrgNotFound', { name: parentOrgName });
     }
     if (dbParents.length > 1) {
-      throw new Error(`上级组织名称「${parentOrgName}」在租户内存在多个节点，无法唯一确定`);
+      throw createError(null, 'importParentOrgAmbiguousInTenant', { name: parentOrgName });
     }
     return dbParents[0].id;
   };
@@ -150,10 +151,10 @@ module.exports = fp(async (fastify, options) => {
     await services.tenant.detail({ id: tenantId, withTenantSetting: false });
     const org = await detail({ id });
     if (org.tenantId !== tenantId) {
-      throw new Error('操作失败');
+      throw createError(null, 'operationFailed');
     }
     if ((await models.org.count({ where: { tenantId, parentId: id } })) > 0) {
-      throw new Error('请先删除所有子节点再进行操作');
+      throw createError(null, 'orgHasChildren');
     }
     const orgMembershipWhere = buildUserOrgMembershipWhere([id], Op);
     if (
@@ -162,7 +163,7 @@ module.exports = fp(async (fastify, options) => {
         where: { tenantId, ...orgMembershipWhere }
       })) > 0
     ) {
-      throw new Error('请先移除当前组织下所有用户再进行操作');
+      throw createError(null, 'orgHasUsers');
     }
     await org.destroy();
   };
@@ -171,7 +172,7 @@ module.exports = fp(async (fastify, options) => {
     await services.tenant.detail({ id: tenantId, withTenantSetting: false });
     const org = await detail({ id });
     if (org.tenantId !== tenantId) {
-      throw new Error('操作失败');
+      throw createError(null, 'operationFailed');
     }
     const patch = { ...data };
     if (Object.prototype.hasOwnProperty.call(data, 'leaderUserId')) {
@@ -222,10 +223,10 @@ module.exports = fp(async (fastify, options) => {
       }
     });
     if (ids.size === 0) {
-      throw new Error(`找不到组织「${orgName}」`);
+      throw createError(null, 'importOrgNotFound', { name: orgName });
     }
     if (ids.size > 1) {
-      throw new Error(`组织名称「${orgName}」对应多个节点，请确保名称在租户内唯一或调整 Excel 后重试`);
+      throw createError(null, 'importOrgNameAmbiguous', { name: orgName });
     }
     return [...ids][0];
   };
@@ -233,7 +234,7 @@ module.exports = fp(async (fastify, options) => {
   const assertImportUserContactUnique = async ({ tenantId, row, batchEmails, batchPhones, transaction }) => {
     if (row.email) {
       if (batchEmails.has(row.email)) {
-        throw new Error(`第 ${row.sourceIndex} 条：邮箱「${row.email}」在本批数据中重复`);
+        throw createError(null, 'importEmailDuplicateInBatch', { row: row.sourceIndex, email: row.email });
       }
       batchEmails.add(row.email);
       const emailUsed = await models.user.findOne({
@@ -241,12 +242,12 @@ module.exports = fp(async (fastify, options) => {
         transaction
       });
       if (emailUsed) {
-        throw new Error(`第 ${row.sourceIndex} 条：邮箱「${row.email}」已被使用`);
+        throw createError(null, 'importEmailUsed', { row: row.sourceIndex, email: row.email });
       }
     }
     if (row.phone) {
       if (batchPhones.has(row.phone)) {
-        throw new Error(`第 ${row.sourceIndex} 条：手机号「${row.phone}」在本批数据中重复`);
+        throw createError(null, 'importPhoneDuplicateInBatch', { row: row.sourceIndex, phone: row.phone });
       }
       batchPhones.add(row.phone);
       const phoneUsed = await models.user.findOne({
@@ -254,7 +255,7 @@ module.exports = fp(async (fastify, options) => {
         transaction
       });
       if (phoneUsed) {
-        throw new Error(`第 ${row.sourceIndex} 条：手机号「${row.phone}」已被使用`);
+        throw createError(null, 'importPhoneUsed', { row: row.sourceIndex, phone: row.phone });
       }
     }
   };
@@ -287,7 +288,7 @@ module.exports = fp(async (fastify, options) => {
     if (anchorParentId) {
       const p = await detail({ id: anchorParentId, transaction: t });
       if (p.tenantId !== tenantId) {
-        throw new Error('锚点组织不属于当前租户');
+        throw createError(null, 'importAnchorOrgInvalid');
       }
     }
 
@@ -310,18 +311,18 @@ module.exports = fp(async (fastify, options) => {
               transaction: t
             });
           } catch (e) {
-            throw new Error(`第 ${row.sourceIndex} 条：${e.message}`);
+            throw createError(null, 'importRowError', { row: row.sourceIndex, reason: e });
           }
         }
 
         const levelKey = orgLevelKey(parentId, orgName);
         if (orgPathToId.has(levelKey)) {
-          throw new Error(`第 ${row.sourceIndex} 条：同级下组织名称「${orgName}」在本批数据中重复`);
+          throw createError(null, 'importOrgNameDuplicateInBatch', { row: row.sourceIndex, name: orgName });
         }
         try {
           await assertUniqueOrgNameAtLevel({ tenantId, parentId, name: orgName, transaction: t });
         } catch (e) {
-          throw new Error(`第 ${row.sourceIndex} 条：${e.message}`);
+          throw createError(null, 'importRowError', { row: row.sourceIndex, reason: e });
         }
 
         const orgRow = await models.org.create(
@@ -343,7 +344,7 @@ module.exports = fp(async (fastify, options) => {
         try {
           orgId = await resolveOrgIdByName({ tenantId, orgName: row.orgName, orgPathToId, transaction: t });
         } catch (e) {
-          throw new Error(`第 ${row.sourceIndex} 条：${e.message}（请先导入该组织或确认名称正确）`);
+          throw createError(null, 'importRowOrgMissing', { row: row.sourceIndex, reason: e });
         }
 
         const userId = await createTenantUserForOrg({
@@ -359,7 +360,7 @@ module.exports = fp(async (fastify, options) => {
         if (row.isLeader) {
           const orgRow = await models.org.findByPk(orgId, { transaction: t });
           if (orgRow.leaderUserId && orgRow.leaderUserId !== userId) {
-            throw new Error(`第 ${row.sourceIndex} 条：组织「${row.orgName}」已有负责人`);
+            throw createError(null, 'importOrgLeaderExists', { row: row.sourceIndex, name: row.orgName });
           }
           await assertLeaderUser({ tenantId, leaderUserId: userId, orgId, transaction: t });
           await orgRow.update({ leaderUserId: userId }, { transaction: t });

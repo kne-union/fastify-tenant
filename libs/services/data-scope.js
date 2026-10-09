@@ -3,6 +3,7 @@ const { collectOrgSubtreeIds } = require('../utils/dataScopeOrgIds');
 const findDataScopeByPermissionCode = require('../utils/findDataScopeByPermissionCode');
 const { normalizeDataScopeType } = require('../utils/normalizeDataScopeType');
 const { getUserOrgIds, buildUserOrgMembershipWhere } = require('../utils/tenantOrgIds');
+const { createError } = require('../utils/intl');
 
 /** @typedef {'self' | 'owner' | 'org' | 'orgSubtree'} DataScopeType */
 
@@ -73,7 +74,7 @@ module.exports = fp(async (fastify, options) => {
       transaction
     });
     if (!me) {
-      throw new Error('当前租户用户不存在');
+      throw createError(null, 'currentTenantUserNotFound');
     }
 
     if (mode === 'owner') {
@@ -126,7 +127,7 @@ module.exports = fp(async (fastify, options) => {
       return ids.length ? ids : [String(currentTenantUserId)];
     }
 
-    throw new Error(`未知的数据范围 type/scope: ${mode}`);
+    throw createError(null, 'dataScopeUnknown', { mode });
   };
 
   /**
@@ -250,7 +251,7 @@ module.exports = fp(async (fastify, options) => {
     const tree = permissionsTree || permissions;
     const found = findDataScopeByPermissionCode(tree, permissionCode);
     if (!found) {
-      throw new Error(`未找到权限: ${permissionCode}`);
+      throw createError(null, 'permissionNotFound', { code: permissionCode });
     }
 
     const ds = found.dataScope;
@@ -309,7 +310,7 @@ module.exports = fp(async (fastify, options) => {
       const tree = permissionsTree || permissions;
       const found = findDataScopeByPermissionCode(tree, permissionCode);
       if (!found) {
-        throw new Error(`未找到权限: ${permissionCode}`);
+        throw createError(null, 'permissionNotFound', { code: permissionCode });
       }
       const ds = found.dataScope;
       const dataScopeOpen = !!(ds && ds.open === true);

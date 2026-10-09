@@ -89,6 +89,28 @@ npm i --save @kne/fastify-tenant
 | getUserAuthenticate | function | 使用 fastify-account 的用户认证 | 获取用户认证函数 |
 | getAdminUserAuthenticate | function | 使用 fastify-account 的管理员认证 | 获取管理员认证函数 |
 | permissionsProfile | string | `./libs/permissions.js` | 权限配置文件路径（支持 .js / .yml / .json） |
+| intlNamespace | string | `intl` | @kne/fastify-intl 的命名空间；未注册时错误文案固定返回内置中文 |
+| onPermissionChange | function | `null` | 成员角色、成员状态、成员移除、角色权限 / 状态、租户状态 / 权限变化后回调，参数 `{ tenantId, userIds, reason }`（`userIds` 为账号用户 id）；回调异常只记录日志。接入 fastify-oidc 时设为 `payload => fastify.oidc.onPermissionChange(payload)` |
+
+> **当前租户来源**：`authenticate.tenantUser` 与 `services.user.getTenantUserInfo` 优先使用 `authenticatePayload.tenantId`（如 OIDC access_token 中的租户），没有时才回退到用户的默认租户（`userDefault`）。
+
+#### 国际化
+
+插件抛出的错误文案（含 `BusinessError` 的 `message`）通过 [@kne/fastify-intl](https://www.npmjs.com/package/@kne/fastify-intl) 按请求语言返回，内置 `zh-CN` / `en-US` 语言包。
+
+- 语言来源由 @kne/fastify-intl 决定：query `lang` / `language` → cookie / 请求头 `x-user-locale`、`x-client-language` → `accept-language` → `defaultLocale`
+- 查找顺序：请求语言 → fastify-intl 的 `defaultLocale` → 内置中文
+- 翻译在 `onError` 钩子中完成；批量导入「第 N 条：…」这类包装错误，内层原因一并翻译
+- 语言包可通过 `fastify.tenant.locale` 读取，`fastify.tenant.translator.t(request, messageId, values)` 可按请求语言获取文案
+- 权限列表、角色权限列表、租户用户权限列表接口返回的权限树名称按请求语言翻译：以完整 code（如 `setting:org:view`）查找 `permission.setting:org:view`，查不到时保留原名，因此 `permissionsProfile` 中业务自定义的权限名称原样返回
+- `fastify.tenant.translator.withTranslatedPermissions(request, result)` 可翻译任意带 `permissions` 权限树的结果
+- 创建租户时写入的默认角色名属于数据，不翻译
+
+```js
+fastify.register(require('@kne/fastify-intl'), { defaultLocale: 'zh-CN' });
+fastify.register(require('@kne/fastify-account'));
+fastify.register(require('@kne/fastify-tenant'));
+```
 
 #### 数据模型
 
