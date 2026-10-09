@@ -8,6 +8,17 @@ const mergePermissions = require('../libs/utils/mergePermissions');
 
 const NAME = 'tenantIntlTest';
 
+// @kne/fastify-intl 依赖 ESM-only 的 @formatjs/intl，Node 18 等不支持 require(esm) 的版本无法加载
+const itWithIntl = (() => {
+  try {
+    require('@kne/fastify-intl');
+    return it;
+  } catch (e) {
+    if (e.code === 'ERR_REQUIRE_ESM') return it.skip;
+    throw e;
+  }
+})();
+
 const buildApp = async ({ intl = true } = {}) => {
   const fastify = Fastify({ logger: false });
   if (intl) {
@@ -58,7 +69,7 @@ describe('国际化', () => {
     assert.throws(() => normalizeImportRows([{ rowType: 'user', orgName: 'A', userName: 'u', phone: '+86' }]), { message: '第 1 条：手机号格式不正确' });
   });
 
-  it('按请求语言翻译错误', async () => {
+  itWithIntl('按请求语言翻译错误', async () => {
     const app = await buildApp();
     try {
       assert.deepEqual(await message(app, '/tenant', 'en-US'), { status: 500, message: 'Tenant does not exist' });
@@ -71,7 +82,7 @@ describe('国际化', () => {
     }
   });
 
-  it('包装的底层错误一并翻译', async () => {
+  itWithIntl('包装的底层错误一并翻译', async () => {
     const app = await buildApp();
     try {
       assert.equal((await message(app, '/import', 'en-US')).message, 'Row 1: Invalid phone number format');
@@ -81,7 +92,7 @@ describe('国际化', () => {
     }
   });
 
-  it('不翻译其他插件的错误', async () => {
+  itWithIntl('不翻译其他插件的错误', async () => {
     const app = await buildApp();
     try {
       assert.equal((await message(app, '/foreign', 'en-US')).message, '其他插件的错误');
@@ -90,7 +101,7 @@ describe('国际化', () => {
     }
   });
 
-  it('按请求语言翻译权限树名称，未配置翻译的权限保留原名', async () => {
+  itWithIntl('按请求语言翻译权限树名称，未配置翻译的权限保留原名', async () => {
     const fastify = Fastify({ logger: false });
     await fastify.register(require('@kne/fastify-intl'), { defaultLocale: 'zh-CN' });
     await fastify.register(require('@kne/fastify-namespace'), { name: NAME, options: { name: NAME }, modules: [['locale', locale]] });
