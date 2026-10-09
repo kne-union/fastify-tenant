@@ -1,6 +1,7 @@
 'use strict';
 
 const Fastify = require('fastify');
+const { createTranslator } = require('../../libs/utils/intl');
 
 const noop = async () => {};
 
@@ -151,8 +152,10 @@ async function registerTenantUserController(fastify, name, prefix, services) {
   });
 }
 
+const translatorFor = (fastify, name) => createTranslator({ fastify, options: { name, intlNamespace: 'intl' } });
+
 async function registerTenantAdminController(fastify, name, prefix, services) {
-  fastify.decorate(name, { services });
+  fastify.decorate(name, { services, translator: translatorFor(fastify, name) });
   await fastify.register(require('../../libs/controllers/tenant-admin.js'), {
     name,
     prefix,
@@ -164,6 +167,7 @@ async function registerTenantAdminController(fastify, name, prefix, services) {
 async function registerTenantPermissionController(fastify, name, prefix, services) {
   fastify.decorate(name, {
     services,
+    translator: translatorFor(fastify, name),
     authenticate: {
       user: authUser(),
       tenantUser: async request => {
@@ -179,7 +183,7 @@ async function registerTenantPermissionController(fastify, name, prefix, service
 }
 
 async function registerTenantAdminPermissionController(fastify, name, prefix, services) {
-  fastify.decorate(name, { services });
+  fastify.decorate(name, { services, translator: translatorFor(fastify, name) });
   await fastify.register(require('../../libs/controllers/tenant-admin-permission.js'), {
     name,
     prefix,

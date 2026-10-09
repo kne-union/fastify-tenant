@@ -1,3 +1,5 @@
+const { createError } = require('./intl');
+
 const getThirdLoginMap = options => {
   const thirdLogin = options && options.thirdLogin;
   if (!thirdLogin || typeof thirdLogin !== 'object' || Array.isArray(thirdLogin)) {
@@ -120,14 +122,14 @@ const findUserBySyncSourceId = async ({ models, tenantId, platform, sourceId, st
 const assertThirdLoginBindingConflict = async ({ models, tenantId, platform, sourceId, excludeUserId }) => {
   const existing = await findUserByThirdLoginBinding({ models, tenantId, platform, sourceId });
   if (existing && String(existing.id) !== String(excludeUserId)) {
-    throw new Error('该第三方账号已绑定到其他用户');
+    throw createError(null, 'thirdAccountBoundToOther');
   }
 
   if (excludeUserId) {
     const currentUser = await models.user.findByPk(excludeUserId);
     const currentBinding = getThirdLoginFromOptions(currentUser?.options, platform);
     if (currentBinding && currentBinding.sourceId !== String(sourceId)) {
-      throw new Error('当前用户已绑定其他第三方账号');
+      throw createError(null, 'userBoundOtherThirdAccount');
     }
   }
 };
@@ -138,7 +140,7 @@ const assertCanUnbindThirdLogin = ({ user, platform }) => {
   }
   const syncSource = user?.syncSource;
   if (syncSource && String(syncSource) === String(platform)) {
-    throw new Error('来源渠道不可解绑');
+    throw createError(null, 'sourceChannelNotUnbindable');
   }
 };
 

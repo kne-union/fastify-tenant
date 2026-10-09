@@ -3,6 +3,7 @@ const path = require('node:path');
 const yml = require('js-yaml');
 const fs = require('node:fs/promises');
 const { BusinessError } = require('./libs/utils/errors');
+const { locale, createError, createTranslator } = require('./libs/utils/intl');
 const httpErrors = require('http-errors');
 const { Unauthorized } = httpErrors;
 
@@ -27,6 +28,7 @@ module.exports = fp(
         clientTokenHeader: 'x-client-user-token',
         thirdLoginTokenHeader: 'x-third-login-token',
         tenantUserContextName: 'tenantUserInfo',
+        intlNamespace: 'intl',
         getUserModel: () => {
           if (!fastify.account) {
             throw new Error('请先安装fastify-account插件或者实现options.getUserModel');
@@ -47,10 +49,14 @@ module.exports = fp(
         },
         permissionsProfile: path.resolve(process.cwd(), './libs/permissions.js'),
         syncOrgTask: null,
-        sendOrgMessage: null
+        sendOrgMessage: null,
+        onPermissionChange: null
       },
       options
     );
+
+    const translator = createTranslator({ fastify, options });
+    fastify.addHook('onError', translator.onError);
 
     fastify.register(require('@kne/fastify-namespace'), {
       options,
@@ -66,6 +72,8 @@ module.exports = fp(
           })
         ],
         ['services', path.resolve(__dirname, './libs/services')],
+        ['locale', locale],
+        ['translator', translator],
         [
           'utils',
           {
@@ -87,11 +95,11 @@ module.exports = fp(
                   extractToken: () => request.headers[options.thirdLoginTokenHeader]
                 });
               } catch (e) {
-                throw Unauthorized('身份认证失败');
+                throw createError(Unauthorized, 'authenticationFailed');
               }
               //这里判断失效时间
               if (options.jwt?.expires && Date.now() - info.iat * 1000 > options.jwt.expires) {
-                throw Unauthorized('身份认证超时');
+                throw createError(Unauthorized, 'authenticationExpired');
               }
               request.authenticatePayload = {};
               request.userInfo = {};
@@ -100,7 +108,8 @@ module.exports = fp(
             tenantUser: async request => {
               const { services } = fastify[options.name];
               if (!request[options.tenantUserContextName]) {
-                request[options.tenantUserContextName] = await services.user.getTenantUserInfo(request.userInfo);
+                const tenantId = request.authenticatePayload?.tenantId;
+                request[options.tenantUserContextName] = await services.user.getTenantUserInfo(tenantId ? Object.assign({}, request.userInfo, { tenantId }) : request.userInfo);
               }
             }
           }

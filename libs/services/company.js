@@ -1,4 +1,5 @@
 const fp = require('fastify-plugin');
+const { createError } = require('../utils/intl');
 
 const COMPANY_SAVE_KEYS = ['name', 'fullName', 'logo', 'industry', 'scale', 'address', 'phone', 'email', 'foundedDate', 'companyTags', 'website', 'description', 'banners', 'teamDescription', 'developmentHistory', 'contact', 'options'];
 
@@ -39,7 +40,7 @@ module.exports = fp(async (fastify, options) => {
       return models.company.findByPk(id);
     }
     if (!tenantId) {
-      throw new Error('查询参数有误');
+      throw createError(null, 'queryInvalid');
     }
 
     const tenant = await services.tenant.detail({ id: tenantId, withTenantSetting: false });

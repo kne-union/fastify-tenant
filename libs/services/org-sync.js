@@ -1,6 +1,7 @@
 const fp = require('fastify-plugin');
 const get = require('lodash/get');
 const { resolveLinkedTargetProps } = require('../utils/resolveLinkedTargetProps');
+const { createError } = require('../utils/intl');
 
 module.exports = fp(async (fastify, options) => {
   const { models, services } = fastify[options.name];
@@ -91,13 +92,13 @@ module.exports = fp(async (fastify, options) => {
 
   const triggerSync = async ({ tenantId }) => {
     if (typeof options.syncOrgTask !== 'function') {
-      throw new Error('syncOrgTask 未配置，无法执行同步');
+      throw createError(null, 'orgSyncTaskNotConfigured');
     }
     const record = await models.orgSync.findOne({
       where: { tenantId }
     });
     if (!record || !record.type) {
-      throw new Error('未找到同步配置，请先保存关联配置');
+      throw createError(null, 'orgSyncConfigNotFound');
     }
     const config = await getConfig({ tenantId });
     await record.update({ status: 'running' });
@@ -112,12 +113,12 @@ module.exports = fp(async (fastify, options) => {
 
   const sendMessage = async ({ tenantId, userIds, content, msgtype = 'text' }) => {
     if (typeof options.sendOrgMessage !== 'function') {
-      throw new Error('sendOrgMessage 未配置，无法发送消息');
+      throw createError(null, 'orgMessageSenderNotConfigured');
     }
 
     const config = await getConfig({ tenantId });
     if (!config.enabled) {
-      throw new Error('未找到有效的组织同步配置，无法发送消息');
+      throw createError(null, 'orgSyncConfigInvalid');
     }
 
     const { Op } = fastify.sequelize.Sequelize;
@@ -132,7 +133,7 @@ module.exports = fp(async (fastify, options) => {
     });
 
     if (users.length === 0) {
-      throw new Error('所选用户中没有可发送消息的外部用户');
+      throw createError(null, 'orgMessageNoExternalUser');
     }
 
     const touser = users.map(u => u.sourceId);

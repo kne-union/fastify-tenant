@@ -1,5 +1,7 @@
 'use strict';
 
+const { createError } = require('./intl');
+
 /**
  * 将导入/录入的手机号统一为「+86 1xxxxxxxxxx」形式（无国家码时默认 +86）
  * @param {string|null|undefined} raw
@@ -22,7 +24,7 @@ function normalizePhone(raw) {
     if (digits.startsWith('86')) {
       const national = digits.slice(2);
       if (!national) {
-        throw new Error('手机号格式不正确');
+        throw createError(null, 'phoneInvalid');
       }
       return `+86 ${national}`;
     }
@@ -42,7 +44,7 @@ function normalizePhone(raw) {
   }
 
   if (!digits) {
-    throw new Error('手机号格式不正确');
+    throw createError(null, 'phoneInvalid');
   }
 
   return `+86 ${digits}`;

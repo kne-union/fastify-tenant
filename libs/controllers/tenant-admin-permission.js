@@ -156,7 +156,7 @@ module.exports = fp(async (fastify, options) => {
       }
     },
     async request => {
-      return await services.role.permissionList(request.query);
+      return fastify[options.name].translator.withTranslatedPermissions(request, await services.role.permissionList(request.query));
     }
   );
 
@@ -211,7 +211,7 @@ module.exports = fp(async (fastify, options) => {
       }
     },
     async request => {
-      return await services.permission.list(request.query);
+      return fastify[options.name].translator.withTranslatedPermissions(request, await services.permission.list(request.query));
     }
   );
 

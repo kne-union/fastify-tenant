@@ -1012,7 +1012,7 @@ module.exports = fp(async (fastify, options) => {
       }
     },
     async request => {
-      return await services.user.permissionList(request.query);
+      return fastify[options.name].translator.withTranslatedPermissions(request, await services.user.permissionList(request.query));
     }
   );
 
