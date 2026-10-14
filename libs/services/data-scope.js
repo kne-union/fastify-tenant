@@ -4,6 +4,7 @@ const findDataScopeByPermissionCode = require('../utils/findDataScopeByPermissio
 const { normalizeDataScopeType } = require('../utils/normalizeDataScopeType');
 const { getUserOrgIds, buildUserOrgMembershipWhere } = require('../utils/tenantOrgIds');
 const { createError } = require('../utils/intl');
+const { getSequelize } = require('../utils/sequelize');
 
 /** @typedef {'self' | 'owner' | 'org' | 'orgSubtree'} DataScopeType */
 
@@ -42,7 +43,7 @@ module.exports = fp(async (fastify, options) => {
       return [...ids];
     }
 
-    const orgMembershipWhere = buildUserOrgMembershipWhere([...orgIdSet], Op);
+    const orgMembershipWhere = buildUserOrgMembershipWhere([...orgIdSet], Op, getSequelize(fastify));
     if (orgMembershipWhere) {
       const users = await models.user.findAll({
         where: { tenantId, ...orgMembershipWhere },
@@ -86,7 +87,7 @@ module.exports = fp(async (fastify, options) => {
       if (!myOrgIds.length) {
         return [String(currentTenantUserId)];
       }
-      const orgMembershipWhere = buildUserOrgMembershipWhere(myOrgIds, Op);
+      const orgMembershipWhere = buildUserOrgMembershipWhere(myOrgIds, Op, getSequelize(fastify));
       const rows = await models.user.findAll({
         where: { tenantId, ...orgMembershipWhere },
         attributes: ['id'],
@@ -117,7 +118,7 @@ module.exports = fp(async (fastify, options) => {
       if (!orgIds.length) {
         return [String(currentTenantUserId)];
       }
-      const orgMembershipWhere = buildUserOrgMembershipWhere(orgIds, Op);
+      const orgMembershipWhere = buildUserOrgMembershipWhere(orgIds, Op, getSequelize(fastify));
       const users = await models.user.findAll({
         where: { tenantId, ...orgMembershipWhere },
         attributes: ['id'],

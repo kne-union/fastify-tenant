@@ -1,11 +1,38 @@
 const { createError } = require('./intl');
 
-const getThirdLoginMap = options => {
-  const thirdLogin = options && options.thirdLogin;
+const isLegacyThirdLoginObject = thirdLogin => {
+  // Legacy: { platform: 'wecom', sourceId, boundAt? } — not platform → entry map
+  return Boolean(
+    thirdLogin &&
+      typeof thirdLogin === 'object' &&
+      !Array.isArray(thirdLogin) &&
+      typeof thirdLogin.platform === 'string' &&
+      thirdLogin.platform &&
+      (typeof thirdLogin[thirdLogin.platform] !== 'object' || thirdLogin[thirdLogin.platform] === null)
+  );
+};
+
+const normalizeThirdLoginMap = thirdLogin => {
   if (!thirdLogin || typeof thirdLogin !== 'object' || Array.isArray(thirdLogin)) {
     return {};
   }
+  if (isLegacyThirdLoginObject(thirdLogin)) {
+    const platform = String(thirdLogin.platform);
+    if (thirdLogin.sourceId == null || thirdLogin.sourceId === '') {
+      return { [platform]: {} };
+    }
+    return {
+      [platform]: {
+        sourceId: String(thirdLogin.sourceId),
+        boundAt: thirdLogin.boundAt || null
+      }
+    };
+  }
   return thirdLogin;
+};
+
+const getThirdLoginMap = options => {
+  return normalizeThirdLoginMap(options && options.thirdLogin);
 };
 
 /** Binding for one platform; requires sourceId. */

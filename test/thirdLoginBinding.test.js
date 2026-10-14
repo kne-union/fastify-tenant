@@ -117,4 +117,23 @@ describe('thirdLoginBinding map', () => {
     });
     assert.strictEqual(found.id, 'u2');
   });
+
+  it('listThirdLoginBindings reads legacy single-object format', () => {
+    const options = {
+      thirdLogin: { platform: 'wecom', sourceId: 'legacy-w1', boundAt: '2026-01-01T00:00:00.000Z' }
+    };
+    const bindings = listThirdLoginBindings(options);
+    assert.strictEqual(bindings.length, 1);
+    assert.strictEqual(bindings[0].platform, 'wecom');
+    assert.strictEqual(bindings[0].sourceId, 'legacy-w1');
+    assert.strictEqual(getThirdLoginFromOptions(options, 'wecom').sourceId, 'legacy-w1');
+  });
+
+  it('merge after legacy read writes map without losing channel', () => {
+    const legacy = { thirdLogin: { platform: 'wecom', sourceId: 'w1' } };
+    const next = mergeThirdLoginOptions(legacy, 'dingtalk', 'd1');
+    assert.strictEqual(getThirdLoginFromOptions(next, 'wecom').sourceId, 'w1');
+    assert.strictEqual(getThirdLoginFromOptions(next, 'dingtalk').sourceId, 'd1');
+    assert.strictEqual(typeof next.thirdLogin.platform, 'undefined');
+  });
 });

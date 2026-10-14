@@ -104,10 +104,12 @@ function createControllerServices(overrides = {}) {
       })
     },
     thirdLogin: {
-      list: async () => ({ sourceOptions: [], list: [] }),
-      getConfig: async () => ({ enabled: false, source: null, targetId: null, props: {}, sourceOptions: [] }),
+      list: async () => ({ sourceOptions: [], list: [], allowThirdLoginBind: false }),
+      getConfig: async () => ({ enabled: false, source: null, targetId: null, props: {}, sourceOptions: [], allowThirdLoginBind: false }),
       saveConfig: noop,
-      cancelConfig: noop
+      cancelConfig: noop,
+      isAllowThirdLoginBind: async () => false,
+      saveBindSetting: async ({ allowThirdLoginBind }) => ({ allowThirdLoginBind: Boolean(allowThirdLoginBind) })
     },
     orgSync: {
       getConfig: async () => ({ enabled: false, source: null, syncInterval: null, targetId: null, lastSyncTime: null, syncSupported: false, sourceOptions: [] }),
