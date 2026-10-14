@@ -17,6 +17,8 @@ module.exports = fp(async (fastify, options) => {
 
   const sourceOptions = parseSourceOptions(options.syncOrgType);
 
+  const readAllowThirdLoginBind = tenantSetting => Boolean(get(tenantSetting, 'options.allowThirdLoginBind'));
+
   const mapRecord = async (record, tenantSetting) => {
     const targetId = get(record, 'config.targetId') || null;
     return {
@@ -38,7 +40,8 @@ module.exports = fp(async (fastify, options) => {
     const listData = await Promise.all(records.map(record => mapRecord(record, tenantSetting)));
     return {
       sourceOptions,
-      list: listData
+      list: listData,
+      allowThirdLoginBind: readAllowThirdLoginBind(tenantSetting)
     };
   };
 
@@ -48,8 +51,11 @@ module.exports = fp(async (fastify, options) => {
       order: [['id', 'ASC']]
     });
 
+    const tenantSetting = await fastify.tenant.services.setting.detail({ tenantId });
+    const allowThirdLoginBind = readAllowThirdLoginBind(tenantSetting);
+
     if (!records.length) {
-      return { enabled: false, source: type || null, targetId: null, props: {}, sourceOptions };
+      return { enabled: false, source: type || null, targetId: null, props: {}, sourceOptions, allowThirdLoginBind };
     }
 
     let record;
@@ -64,14 +70,14 @@ module.exports = fp(async (fastify, options) => {
       throw createError(null, 'thirdLoginTargetRequired');
     }
 
-    const tenantSetting = await fastify.tenant.services.setting.detail({ tenantId });
     const mapped = await mapRecord(record, tenantSetting);
     return {
       enabled: true,
       source: mapped.source,
       targetId: mapped.targetId,
       props: mapped.props,
-      sourceOptions
+      sourceOptions,
+      allowThirdLoginBind
     };
   };
 
@@ -122,7 +128,24 @@ module.exports = fp(async (fastify, options) => {
     return {};
   };
 
+  const isAllowThirdLoginBind = async ({ tenantId }) => {
+    const tenantSetting = await fastify.tenant.services.setting.detail({ tenantId });
+    return readAllowThirdLoginBind(tenantSetting);
+  };
+
+  const saveBindSetting = async ({ tenantId, allowThirdLoginBind }) => {
+    const setting = await fastify.tenant.services.setting.detail({ tenantId });
+    const nextOptions = Object.assign({}, setting.options || {}, {
+      allowThirdLoginBind: Boolean(allowThirdLoginBind)
+    });
+    setting.options = nextOptions;
+    await setting.save();
+    return {
+      allowThirdLoginBind: Boolean(allowThirdLoginBind)
+    };
+  };
+
   Object.assign(fastify[options.name].services, {
-    thirdLogin: { list, getConfig, saveConfig, cancelConfig }
+    thirdLogin: { list, getConfig, saveConfig, cancelConfig, isAllowThirdLoginBind, saveBindSetting }
   });
 });

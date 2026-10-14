@@ -1,6 +1,8 @@
 const fp = require('fastify-plugin');
 const { createError, createBusinessError } = require('../utils/intl');
 const { escapeLike } = require('../utils/escapeLike');
+const { buildJsonArrayContainsWhere } = require('../utils/tenantOrgIds');
+const { getSequelize } = require('../utils/sequelize');
 
 module.exports = fp(async (fastify, options) => {
   const { models, services } = fastify[options.name];
@@ -118,9 +120,7 @@ module.exports = fp(async (fastify, options) => {
       (await models.user.count({
         where: {
           tenantId,
-          roles: {
-            [Op.contains]: [role.code]
-          }
+          ...buildJsonArrayContainsWhere('roles', 'roles', [role.code], Op, getSequelize(fastify))
         }
       })) > 0
     ) {

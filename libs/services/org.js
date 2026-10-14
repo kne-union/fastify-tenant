@@ -156,7 +156,7 @@ module.exports = fp(async (fastify, options) => {
     if ((await models.org.count({ where: { tenantId, parentId: id } })) > 0) {
       throw createError(null, 'orgHasChildren');
     }
-    const orgMembershipWhere = buildUserOrgMembershipWhere([id], Op);
+    const orgMembershipWhere = buildUserOrgMembershipWhere([id], Op, getSequelize(fastify));
     if (
       orgMembershipWhere &&
       (await models.user.count({

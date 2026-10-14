@@ -134,6 +134,29 @@ module.exports = fp(async (fastify, options) => {
   );
 
   fastify.post(
+    `${options.prefix}/third-login-bind-setting`,
+    {
+      onRequest: [userAuthenticate, authenticate.tenantUser],
+      schema: {
+        summary: '保存第三方登录自定义绑定开关',
+        body: {
+          type: 'object',
+          properties: {
+            allowThirdLoginBind: { type: 'boolean' }
+          },
+          required: ['allowThirdLoginBind']
+        }
+      }
+    },
+    async request => {
+      return services.thirdLogin.saveBindSetting({
+        tenantId: request.tenantUserInfo.tenantId,
+        allowThirdLoginBind: request.body.allowThirdLoginBind
+      });
+    }
+  );
+
+  fastify.post(
     `${options.prefix}/third-login-bind-token`,
     {
       onRequest: [userAuthenticate, authenticate.tenantUser],

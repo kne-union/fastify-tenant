@@ -74,6 +74,7 @@ describe('controllers 全路由冒烟（期望 <500，覆盖 handler 注册）',
       ['GET', `${prefix}/third-login-config`, {}],
       ['POST', `${prefix}/third-login-config-save`, { payload: { source: 'wecom', targetId: 'TARGET_LINKED_X' } }],
       ['POST', `${prefix}/third-login-config-cancel`, { payload: { source: 'wecom', targetId: 'TARGET_LINKED_X' } }],
+      ['POST', `${prefix}/third-login-bind-setting`, { payload: { allowThirdLoginBind: true } }],
       ['POST', `${prefix}/third-login-bind-token`, { payload: { id: '1', platform: 'wecom', targetId: 'TARGET_LINKED_X' } }],
       ['POST', `${prefix}/third-login-unbind`, { payload: { id: '1' } }]
     ];
@@ -416,6 +417,7 @@ describe('controllers 全路由冒烟（期望 <500，覆盖 handler 注册）',
       ['GET', `${prefix}/admin/third-login-config?tenantId=t1`, {}],
       ['POST', `${prefix}/admin/third-login-config-save`, { payload: { tenantId: 't1', source: 'wecom', targetId: 'TARGET_LINKED_X' } }],
       ['POST', `${prefix}/admin/third-login-config-cancel`, { payload: { tenantId: 't1', source: 'wecom', targetId: 'TARGET_LINKED_X' } }],
+      ['POST', `${prefix}/admin/third-login-bind-setting`, { payload: { tenantId: 't1', allowThirdLoginBind: true } }],
       ['POST', `${prefix}/admin/third-login-bind-token`, { payload: { tenantId: 't1', id: '1', platform: 'wecom', targetId: 'TARGET_LINKED_X' } }],
       ['POST', `${prefix}/admin/third-login-unbind`, { payload: { tenantId: 't1', id: '1' } }]
     ];

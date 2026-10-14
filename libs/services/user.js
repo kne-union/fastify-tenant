@@ -6,7 +6,8 @@ const { escapeLike } = require('../utils/escapeLike');
 const { collectOrgSubtreeIds } = require('../utils/dataScopeOrgIds');
 const { buildOrgNamePath } = require('../utils/orgPath');
 const { normalizeTenantUserStatus } = require('../utils/normalizeTenantUserStatus');
-const { pickOrgIdsFromInput, buildUserOrgMembershipWhere, attachUserOrgDisplay, getUserOrgIds } = require('../utils/tenantOrgIds');
+const { pickOrgIdsFromInput, buildJsonArrayContainsWhere, buildUserOrgMembershipWhere, attachUserOrgDisplay, getUserOrgIds } = require('../utils/tenantOrgIds');
+const { getSequelize } = require('../utils/sequelize');
 const findDataScopeByPermissionCode = require('../utils/findDataScopeByPermissionCode');
 const get = require('lodash/get');
 const {
@@ -291,7 +292,7 @@ module.exports = fp(async (fastify, options) => {
           tenantOrgId
         )
       ];
-      const orgMembershipWhere = buildUserOrgMembershipWhere(orgIds.length > 0 ? orgIds : [tenantOrgId], Op);
+      const orgMembershipWhere = buildUserOrgMembershipWhere(orgIds.length > 0 ? orgIds : [tenantOrgId], Op, getSequelize(fastify));
       if (orgMembershipWhere) {
         whereQuery[Op.and] = [...(whereQuery[Op.and] || []), orgMembershipWhere];
       }
@@ -306,18 +307,17 @@ module.exports = fp(async (fastify, options) => {
       .concat(toFilterArray(filter.role))
       .map(role => String(role).trim())
       .filter(Boolean);
-    if (roleIds.length === 1) {
-      whereQuery.roles = { [Op.contains]: [roleIds[0]] };
-    } else if (roleIds.length > 1) {
-      const roleOr = roleIds.map(roleId => ({ roles: { [Op.contains]: [roleId] } }));
-      const roleCondition = { [Op.or]: roleOr };
-      if (whereQuery[Op.or]) {
-        const keywordOr = whereQuery[Op.or];
-        delete whereQuery[Op.or];
-        whereQuery[Op.and] = [...(whereQuery[Op.and] || []), { [Op.or]: keywordOr }, roleCondition];
-      } else {
-        whereQuery[Op.and] = [...(whereQuery[Op.and] || []), roleCondition];
-      }
+    const roleWhere = buildJsonArrayContainsWhere('roles', 'roles', roleIds, Op, getSequelize(fastify));
+    if (roleWhere?.roles) {
+      whereQuery.roles = roleWhere.roles;
+    } else if (roleWhere?.[Op.or] && !whereQuery[Op.or]) {
+      whereQuery[Op.or] = roleWhere[Op.or];
+    } else if (roleWhere?.[Op.or] && whereQuery[Op.or]) {
+      const keywordOr = whereQuery[Op.or];
+      delete whereQuery[Op.or];
+      whereQuery[Op.and] = [...(whereQuery[Op.and] || []), { [Op.or]: keywordOr }, roleWhere];
+    } else if (roleWhere) {
+      whereQuery[Op.and] = [...(whereQuery[Op.and] || []), roleWhere];
     }
 
     const id = filter.id != null ? String(filter.id).trim() : '';
@@ -623,17 +623,47 @@ module.exports = fp(async (fastify, options) => {
     };
   };
 
+  const BIND_TOKEN_TTL_MS = 5 * 60 * 1000;
+  const BIND_TOKEN_EXPIRES_IN = '5m';
+
+  const getThirdLoginShortenServices = () => {
+    if (typeof options.getThirdLoginShortenServices === 'function') {
+      return options.getThirdLoginShortenServices();
+    }
+    return fastify.thirdLoginShorten?.services || null;
+  };
+
+  const resolveBindTokenPayload = async bindToken => {
+    let token = bindToken;
+    if (typeof token === 'string' && !token.includes('.')) {
+      const shortenServices = getThirdLoginShortenServices();
+      if (!shortenServices?.decode) {
+        throw new Error('绑定链接无效或已过期');
+      }
+      try {
+        token = await shortenServices.decode(token);
+      } catch (e) {
+        throw new Error('绑定链接无效或已过期');
+      }
+    }
+    try {
+      return fastify.jwt.verify(token).payload;
+    } catch (e) {
+      throw new Error('绑定链接无效或已过期');
+    }
+  };
+
   const resolveThirdLoginUser = async (props, thirdLoginResult) => {
     const { tenantId } = props;
     const platform = thirdLoginResult.platform;
 
     if (props.bindToken) {
-      let payload;
-      try {
-        payload = fastify.jwt.verify(props.bindToken).payload;
-      } catch (e) {
-        throw createError(null, 'bindLinkInvalidOrExpired');
+      const allowBind = await services.thirdLogin.isAllowThirdLoginBind({ tenantId });
+      if (!allowBind) {
+        throw new Error('未开启自定义绑定');
       }
+
+      const payload = await resolveBindTokenPayload(props.bindToken);
       if (payload.purpose !== 'third-login-bind' || String(payload.tenantId) !== String(tenantId)) {
         throw createError(null, 'bindLinkInvalid');
       }
@@ -811,6 +841,15 @@ module.exports = fp(async (fastify, options) => {
       throw createError(null, 'userIdRequired');
     }
 
+    const allowBind = await services.thirdLogin.isAllowThirdLoginBind({ tenantId });
+    if (!allowBind) {
+      throw new Error('未开启自定义绑定');
+    }
+
+    if (!getThirdLoginShortenServices()?.sign) {
+      throw new Error('短链服务未配置');
+    }
+
     await detail({ tenantId, id: targetUserId });
 
     let resolvedPlatform = platform;
@@ -834,7 +873,8 @@ module.exports = fp(async (fastify, options) => {
       throw createError(null, 'thirdLoginChannelNotConfigured');
     }
 
-    const token = fastify.jwt.sign(
+    const expiresAt = Date.now() + BIND_TOKEN_TTL_MS;
+    const jwtToken = fastify.jwt.sign(
       {
         payload: {
           purpose: 'third-login-bind',
@@ -844,15 +884,19 @@ module.exports = fp(async (fastify, options) => {
           targetId: config.targetId
         }
       },
-      { expiresIn: '24h' }
+      { expiresIn: BIND_TOKEN_EXPIRES_IN }
     );
 
+    const bindToken = await getThirdLoginShortenServices().sign(jwtToken, expiresAt);
     const targetIdQuery = config.targetId ? `&targetId=${encodeURIComponent(config.targetId)}` : '';
-    const url = `${fastify.config.ORIGIN}/third-login?platform=${resolvedPlatform}&tenantId=${tenantId}&bindToken=${encodeURIComponent(token)}${targetIdQuery}`;
+    const url = `${fastify.config.ORIGIN}/third-login?platform=${resolvedPlatform}&tenantId=${tenantId}&bindToken=${encodeURIComponent(bindToken)}${targetIdQuery}`;
 
     return {
-      token,
+      bindToken,
+      token: bindToken,
       url,
+      expiresAt,
+      expiresIn: Math.floor(BIND_TOKEN_TTL_MS / 1000),
       platform: resolvedPlatform,
       targetId: config.targetId
     };

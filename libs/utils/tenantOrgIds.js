@@ -54,20 +54,45 @@ const userBelongsToOrg = (user, orgId) => {
   return getUserOrgIds(user).includes(target);
 };
 
+const quoteIdent = name => {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new Error(`invalid column: ${name}`);
+  }
+  return `"${name}"`;
+};
+
 /**
- * @param {string[]} orgIds
+ * JSON 数组包含任意一个值。
+ * PostgreSQL 用 JSONB `@>`（Op.contains）；SQLite 没有该运算符，改用 json_each。
+ *
+ * @param {string} attribute
+ * @param {string} column
+ * @param {string[]} values
  * @param {import('sequelize').Op} Op
+ * @param {{ getDialect?: () => string, escape?: (value: unknown) => string, literal?: (value: string) => unknown } | undefined} sequelize
  */
-const buildUserOrgMembershipWhere = (orgIds, Op) => {
-  const unique = [...new Set((orgIds || []).map(String).filter(Boolean))];
+const buildJsonArrayContainsWhere = (attribute, column, values, Op, sequelize) => {
+  const unique = [...new Set((values || []).map(String).filter(Boolean))];
   if (!unique.length) {
     return null;
   }
-  if (unique.length === 1) {
-    return { tenantOrgIds: { [Op.contains]: [unique[0]] } };
+  const dialect = sequelize && typeof sequelize.getDialect === 'function' ? sequelize.getDialect() : 'postgres';
+  if (dialect === 'sqlite') {
+    const clause = unique.map(value => `EXISTS (SELECT 1 FROM json_each(${quoteIdent(column)}) WHERE json_each.value = ${sequelize.escape(value)})`).join(' OR ');
+    return { [Op.and]: [sequelize.literal(unique.length === 1 ? clause : `(${clause})`)] };
   }
-  return { [Op.or]: unique.map(oid => ({ tenantOrgIds: { [Op.contains]: [oid] } })) };
+  if (unique.length === 1) {
+    return { [attribute]: { [Op.contains]: [unique[0]] } };
+  }
+  return { [Op.or]: unique.map(value => ({ [attribute]: { [Op.contains]: [value] } })) };
 };
+
+/**
+ * @param {string[]} orgIds
+ * @param {import('sequelize').Op} Op
+ * @param {object} [sequelize]
+ */
+const buildUserOrgMembershipWhere = (orgIds, Op, sequelize) => buildJsonArrayContainsWhere('tenantOrgIds', 'tenant_org_ids', orgIds, Op, sequelize);
 
 /**
  * @param {import('sequelize').Model} item
@@ -99,6 +124,7 @@ module.exports = {
   getUserOrgIds,
   pickOrgIdsFromInput,
   userBelongsToOrg,
+  buildJsonArrayContainsWhere,
   buildUserOrgMembershipWhere,
   attachUserOrgDisplay
 };
