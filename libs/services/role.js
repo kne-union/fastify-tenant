@@ -8,9 +8,14 @@ module.exports = fp(async (fastify, options) => {
   const { models, services } = fastify[options.name];
   const { Op } = fastify.sequelize.Sequelize;
 
+  const emitChange = tenantId => fastify[options.name].emitChange?.({ tenantId, type: 'role' });
+
   const create = async ({ tenantId, ...data }) => {
     const tenant = await services.tenant.detail({ id: tenantId, withTenantSetting: false });
-    return await models.role.create(Object.assign({}, data, { tenantId: tenant.id }));
+    await services.managed?.assertNotManaged(tenant);
+    const role = await models.role.create(Object.assign({}, data, { tenantId: tenant.id }));
+    emitChange(tenant.id);
+    return role;
   };
 
   const pickFilterString = value => {
@@ -101,16 +106,19 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const save = async ({ tenantId, id, ...data }) => {
+    await services.managed?.assertNotManaged(tenantId);
     const role = await detail({ id, tenantId });
     if (role.type === 'system') {
       throw createBusinessError('ROLE_SYSTEM_IMMUTABLE', 'roleSystemImmutable');
     }
     const result = await role.update(data);
     await services.permissionChange?.notify({ tenantId, roleKeys: [role.id, role.code], reason: 'role-save' });
+    emitChange(tenantId);
     return result;
   };
 
   const remove = async ({ tenantId, id }) => {
+    await services.managed?.assertNotManaged(tenantId);
     const role = await detail({ id, tenantId });
     if (role.type === 'system') {
       throw createBusinessError('ROLE_SYSTEM_IMMUTABLE', 'roleSystemNotRemovable');
@@ -126,16 +134,19 @@ module.exports = fp(async (fastify, options) => {
     ) {
       throw createBusinessError('ROLE_IN_USE', 'roleInUse');
     }
-    return await role.destroy();
+    await role.destroy();
+    emitChange(tenantId);
   };
 
   const setStatus = async ({ tenantId, id, status }) => {
+    await services.managed?.assertNotManaged(tenantId);
     const role = await detail({ id, tenantId });
     if (role.type === 'system') {
       throw createBusinessError('ROLE_SYSTEM_IMMUTABLE', 'roleSystemImmutable');
     }
     const result = await role.update({ status });
     await services.permissionChange?.notify({ tenantId, roleKeys: [role.id, role.code], reason: 'role-status' });
+    emitChange(tenantId);
     return result;
   };
 
@@ -201,11 +212,13 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const savePermission = async ({ tenantId, id, permissions }) => {
+    await services.managed?.assertNotManaged(tenantId);
     const role = await detail({ tenantId, id });
     const tenantPermissions = await services.permission.tenantLevelList({ tenantId });
     const allowed = new Set(tenantPermissions.codes);
     await role.update({ permissions: permissions.filter(code => allowed.has(code)) });
     await services.permissionChange?.notify({ tenantId, roleKeys: [role.id, role.code], reason: 'role-permissions' });
+    emitChange(tenantId);
     return role;
   };
 

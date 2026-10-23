@@ -125,9 +125,12 @@ module.exports = fp(async (fastify, options) => {
     return dbParents[0].id;
   };
 
+  const emitChange = tenantId => fastify[options.name].emitChange?.({ tenantId, type: 'org' });
+
   const create = async ({ tenantId, parentId, name, description, leaderUserId: leaderUserIdRaw }) => {
     const leaderUserId = normalizeLeaderUserId(leaderUserIdRaw);
-    await services.tenant.detail({ id: tenantId, withTenantSetting: false });
+    const tenant = await services.tenant.detail({ id: tenantId, withTenantSetting: false });
+    await services.managed?.assertNotManaged(tenant);
     if (parentId) {
       await detail({ id: parentId });
     }
@@ -144,11 +147,13 @@ module.exports = fp(async (fastify, options) => {
       await assertLeaderUser({ tenantId, leaderUserId, orgId: org.id, autoEnroll: true });
       await org.update({ leaderUserId });
     }
+    emitChange(tenantId);
     return org;
   };
 
   const remove = async ({ tenantId, id }) => {
-    await services.tenant.detail({ id: tenantId, withTenantSetting: false });
+    const tenant = await services.tenant.detail({ id: tenantId, withTenantSetting: false });
+    await services.managed?.assertNotManaged(tenant);
     const org = await detail({ id });
     if (org.tenantId !== tenantId) {
       throw createError(null, 'operationFailed');
@@ -166,10 +171,12 @@ module.exports = fp(async (fastify, options) => {
       throw createError(null, 'orgHasUsers');
     }
     await org.destroy();
+    emitChange(tenantId);
   };
 
   const save = async ({ tenantId, id, ...data }) => {
-    await services.tenant.detail({ id: tenantId, withTenantSetting: false });
+    const tenant = await services.tenant.detail({ id: tenantId, withTenantSetting: false });
+    await services.managed?.assertNotManaged(tenant);
     const org = await detail({ id });
     if (org.tenantId !== tenantId) {
       throw createError(null, 'operationFailed');
@@ -189,7 +196,9 @@ module.exports = fp(async (fastify, options) => {
         excludeOrgId: id
       });
     }
-    return await org.update(patch);
+    const result = await org.update(patch);
+    emitChange(tenantId);
+    return result;
   };
 
   const enums = async (authenticatePayload, { ids, names }) => {
@@ -276,7 +285,8 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const importFromRows = async ({ tenantId, parentOrgId, rows }) => {
-    await services.tenant.detail({ id: tenantId, withTenantSetting: false });
+    const tenant = await services.tenant.detail({ id: tenantId, withTenantSetting: false });
+    await services.managed?.assertNotManaged(tenant);
     const anchorParentId = parentOrgId || null;
     const effective = normalizeImportRows(rows);
     const orgRows = effective.filter(r => r.rowType === ROW_TYPE_ORG);
@@ -372,6 +382,7 @@ module.exports = fp(async (fastify, options) => {
       await t.rollback();
       throw e;
     }
+    emitChange(tenantId);
 
     return {
       createdOrgs,
@@ -381,8 +392,9 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const syncOrg = async ({ tenantId, syncSource, orgs, users }, outerTransaction) => {
+    await services.managed?.assertNotManaged(tenantId);
     try {
-      return await withTransaction(
+      const result = await withTransaction(
         fastify,
         async transaction => {
           const trans = outerTransaction || transaction;
@@ -551,6 +563,8 @@ module.exports = fp(async (fastify, options) => {
         },
         outerTransaction
       );
+      emitChange(tenantId);
+      return result;
     } catch (e) {
       try {
         await services.orgSync.markFailed({ tenantId, syncSource });

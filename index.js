@@ -58,6 +58,17 @@ module.exports = fp(
     const translator = createTranslator({ fastify, options });
     fastify.addHook('onError', translator.onError);
 
+    const mergePermissions = require('./libs/utils/mergePermissions');
+    const flattenPermissions = require('./libs/utils/flattenPermissions');
+    // 外部注册的权限来源（如 fastify-oidc 的子应用权限），按 key 替换，不与基础权限累加
+    const permissionSources = new Map();
+    let basePermissions = { modules: [] };
+    const rebuildPermissions = () => {
+      fastify[options.name].permissions = [...permissionSources.values()].reduce((result, source) => mergePermissions(result, source.tree), basePermissions);
+    };
+
+    const changeListeners = new Set();
+
     fastify.register(require('@kne/fastify-namespace'), {
       options,
       name: options.name,
@@ -146,16 +157,62 @@ module.exports = fp(
                 return {};
               }
             })();
-            const result = require('./libs/permissions');
-            const mergePermissions = require('./libs/utils/mergePermissions');
-            return mergePermissions(result, outside);
+            basePermissions = mergePermissions(require('./libs/permissions'), outside);
+            return basePermissions;
           })()
         ],
         [
           'appendPermissions',
           outside => {
-            const { permissions, utils } = fastify[options.name];
-            fastify[options.name].permissions = utils.mergePermissions(permissions, outside);
+            basePermissions = mergePermissions(basePermissions, outside);
+            rebuildPermissions();
+          }
+        ],
+        [
+          'setPermissionSource',
+          (key, tree, { defaultDisabled = false } = {}) => {
+            permissionSources.set(key, { tree: tree && Array.isArray(tree.modules) ? tree : { modules: [] }, defaultDisabled });
+            rebuildPermissions();
+          }
+        ],
+        [
+          'removePermissionSource',
+          key => {
+            permissionSources.delete(key);
+            rebuildPermissions();
+          }
+        ],
+        [
+          'getDefaultDisabledPermissionCodes',
+          () => {
+            const codes = new Set();
+            permissionSources.forEach(source => {
+              if (source.defaultDisabled) {
+                flattenPermissions(source.tree).forEach(item => codes.add(item.code));
+              }
+            });
+            return codes;
+          }
+        ],
+        [
+          'onChange',
+          listener => {
+            changeListeners.add(listener);
+            return () => changeListeners.delete(listener);
+          }
+        ],
+        [
+          'emitChange',
+          // 不阻塞业务操作：监听器异常只记录日志
+          event => {
+            const payload = Object.assign({}, event, { tenantId: event.tenantId && String(event.tenantId) });
+            return Promise.all(
+              [...changeListeners].map(listener =>
+                Promise.resolve()
+                  .then(() => listener(payload))
+                  .catch(err => fastify.log.warn({ err, event: payload }, 'fastify-tenant: onChange 监听器执行失败'))
+              )
+            );
           }
         ]
       ]

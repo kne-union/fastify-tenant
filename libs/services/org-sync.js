@@ -42,6 +42,7 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const saveConfig = async ({ tenantId, source, syncInterval, targetId }) => {
+    await services.managed?.assertNotManaged(tenantId);
     const [record, created] = await models.orgSync.findOrCreate({
       where: { tenantId },
       defaults: {
@@ -66,6 +67,7 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const cancelConfig = async ({ tenantId }) => {
+    await services.managed?.assertNotManaged(tenantId);
     const record = await models.orgSync.findOne({
       where: { tenantId }
     });
@@ -91,6 +93,7 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const triggerSync = async ({ tenantId }) => {
+    await services.managed?.assertNotManaged(tenantId);
     if (typeof options.syncOrgTask !== 'function') {
       throw createError(null, 'orgSyncTaskNotConfigured');
     }

@@ -85,6 +85,7 @@ module.exports = fp(async (fastify, options) => {
     if (!targetId) {
       throw createError(null, 'targetIdRequired');
     }
+    await fastify[options.name].services.managed?.assertNotManaged(tenantId);
 
     const [record, created] = await models.thirdLogin.findOrCreate({
       where: {
@@ -112,6 +113,7 @@ module.exports = fp(async (fastify, options) => {
     if (!targetId) {
       throw createError(null, 'targetIdRequired');
     }
+    await fastify[options.name].services.managed?.assertNotManaged(tenantId);
 
     const record = await models.thirdLogin.findOne({
       where: {
@@ -134,6 +136,7 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const saveBindSetting = async ({ tenantId, allowThirdLoginBind }) => {
+    await fastify[options.name].services.managed?.assertNotManaged(tenantId);
     const setting = await fastify.tenant.services.setting.detail({ tenantId });
     const nextOptions = Object.assign({}, setting.options || {}, {
       allowThirdLoginBind: Boolean(allowThirdLoginBind)

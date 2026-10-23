@@ -175,10 +175,72 @@ fastify.register(require('@kne/fastify-tenant'));
 | `services.setting` | 租户设置服务 |
 | `services.sharedGroup` | 共享组服务 |
 | `services.dataScope` | 数据范围服务 |
+| `services.managed` | 托管租户服务（见下方「托管租户」） |
 | `authenticate.tenantUser` | 租户用户认证中间件 |
 | `utils.mergePermissions` | 合并权限配置 |
 | `utils.flattenPermissions` | 展平权限配置 |
-| `appendPermissions(outside)` | 运行时追加权限配置 |
+| `appendPermissions(outside)` | 运行时追加权限配置（累加合并进基础权限） |
+| `setPermissionSource(key, tree, { defaultDisabled })` | 设置一个外部权限来源，同一 `key` 再次设置为替换；`defaultDisabled: true` 时新建租户默认不开通该来源下的权限 |
+| `removePermissionSource(key)` | 移除外部权限来源 |
+| `getDefaultDisabledPermissionCodes()` | 所有 `defaultDisabled` 来源下的权限 code（`Set`） |
+| `onChange(listener)` | 订阅租户数据变化，返回取消订阅函数；`listener({ tenantId, type })` |
+
+#### onChange 事件
+
+监听器异步执行，异常只记录日志，不影响业务操作。
+
+| type | 触发 |
+|------|------|
+| `tenant` | 租户编辑、语言设置、状态变化、删除 |
+| `tenant-permission` | 租户权限保存 |
+| `role` | 角色创建、编辑、状态变化、删除、权限保存 |
+| `member` | 租户用户创建、编辑、状态变化、删除、加入租户 |
+| `org` | 组织创建、编辑、删除、批量导入、第三方组织同步完成 |
+| `snapshot` | 托管租户 `applySnapshot` 完成 |
+
+#### 托管租户
+
+由宿主系统（如 `@kne/fastify-oidc` 主系统）同步过来的租户称为托管租户，标记记录在 `tenant.options.managedBy = { issuer, hostTenantId, syncedAt, files }`（`files` 为宿主文件 id 到本地文件 id 的映射，由同步方传入），`getUserInfo` 与管理端租户详情 / 列表返回的 tenant 中都带有该字段。
+
+托管租户的基本信息与状态、公司信息、租户权限、角色及角色权限、组织架构、成员（含所属组织与部门负责人）只能通过 `services.managed.applySnapshot` 写入，以下操作返回 403（`tenantManaged`）：
+
+| 模块 | 被拒绝的操作 |
+|------|--------------|
+| 租户 | `tenant.save` / `saveLanguages` / `setStatus` / `remove` |
+| 公司信息 | `company.save` |
+| 租户权限 | `permission.save` |
+| 角色 | `role.create` / `save` / `remove` / `setStatus` / `savePermission` |
+| 成员 | `user.create` / `save` / `remove` / `setStatus` / `inviteToken` / `associate` / `join` |
+| 组织 | `org.create` / `save` / `remove` / `importFromRows` / `syncOrg` |
+| 第三方组织同步 | `orgSync.saveConfig` / `cancelConfig` / `triggerSync` |
+| 第三方登录 | `thirdLogin.saveConfig` / `cancelConfig` / `saveBindSetting`、`user.thirdLoginBindToken` / `thirdLoginUnbind` |
+
+环境变量、自定义组件等不在托管范围内，仍可本地维护。本地自建租户没有 `managedBy`，不受影响。
+
+| 方法 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `isManagedTenant(tenant)` | 租户实例或对象 | `boolean` | 是否托管租户 |
+| `assertNotManaged(tenantOrId)` | 租户实例或 id | - | 托管租户抛 `tenantManaged` |
+| `findByHostTenantId` | `{ issuer, hostTenantId }` | 租户实例 / `null` | 按宿主租户 id 查找本地托管租户 |
+| `applySnapshot` | `{ issuer, snapshot }` | 租户实例 / `null` | 在一个事务内按快照 upsert 托管租户；宿主未开通且本地不存在时返回 `null` |
+
+`snapshot` 结构（id 均为宿主侧 id，权限 code 为本地 code）：
+
+| 字段 | 说明 |
+|------|------|
+| `tenant` | `{ id, name, status, logo, themeColor, description, accountCount, supportLanguage, defaultLanguage, serviceStartTime, serviceEndTime, companyName, company }`；`company` 为公司信息（`name`、`fullName`、`logo`、`banners`、`teamDescription` 等），有则整体覆盖本地公司信息，没有时只在首次创建用 `companyName` 建公司信息 |
+| `files` | 可选，`{ 宿主文件 id: 本地文件 id }`，记入 `managedBy.files`；不传时保留上次的映射 |
+| `enabled` | 宿主是否为该租户开通了本应用；`false` 时本地租户置为 `closed`，其余数据不变 |
+| `permissions` | 租户权限 code 数组 |
+| `roles` | `[{ code, name, description, type, status, permissions }]`，按 `code` 对应本地角色，快照中没有的自定义角色置为 `closed` |
+| `orgs` | `[{ id, parentId, name, description, index, status, leaderTenantUserId }]`，按 `syncSource = oidc:{issuer}` + `sourceId` 对应本地组织，先父后子写入，快照中没有的组织置为 `closed` |
+| `members` | `[{ id, userId, name, email, phone, avatar, status, roleCodes, tenantOrgIds }]`，`userId` 为本地账号用户 id；所属组织整体替换（支持多组织），角色按 code 映射；快照中没有的成员置为 `closed`；成员没有默认租户时设为该租户 |
+
+同步规则：
+
+- 租户名与本地其它租户重名（租户名唯一）时，依次追加后缀 `（宿主）`、`（宿主2）`、`（宿主3）`…，直到不冲突
+- 每个成员单独使用 SAVEPOINT，单个成员写入失败只记录日志，不影响整体同步
+- 部门负责人在成员写入后回填，宿主的 `leaderTenantUserId` 映射为本地租户用户 id
 
 #### dataScope 服务方法
 

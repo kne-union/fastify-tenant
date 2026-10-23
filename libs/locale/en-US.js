@@ -12,6 +12,8 @@ module.exports = {
   tenantUnavailable: 'Tenant is not available',
   defaultTenantNotSet: 'No default tenant is set',
   tenantParamsIncomplete: 'Tenant parameters are incomplete',
+  tenantManaged: 'This tenant is synced and managed by the host system, please modify it there',
+  managedSnapshotInvalid: 'Managed tenant snapshot is incomplete',
   languagesRequired: 'Supported languages cannot be empty',
   defaultLanguageNotSupported: 'The default language must be one of the supported languages',
 
