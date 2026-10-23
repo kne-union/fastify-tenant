@@ -201,6 +201,8 @@ module.exports = fp(async (fastify, options) => {
       include: [
         {
           model: models.tenant,
+          where: { status: 'open' },
+          required: true,
           include: models.company
         }
       ],
