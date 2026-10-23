@@ -982,7 +982,8 @@ module.exports = fp(async (fastify, options) => {
       setStatus,
       save,
       join,
-      remove
+      remove,
+      permissionList
     }
   });
 });
