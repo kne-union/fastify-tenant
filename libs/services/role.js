@@ -128,7 +128,7 @@ module.exports = fp(async (fastify, options) => {
       (await models.user.count({
         where: {
           tenantId,
-          ...buildJsonArrayContainsWhere('roles', 'roles', [role.code], Op, getSequelize(fastify))
+          ...buildJsonArrayContainsWhere('roles', 'roles', [role.id, role.code], Op, getSequelize(fastify))
         }
       })) > 0
     ) {
