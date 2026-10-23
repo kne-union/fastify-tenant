@@ -62,6 +62,7 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const save = async ({ tenantId, ...data }) => {
+    await services.managed?.assertNotManaged(tenantId);
     const company = await detail({ tenantId });
     const patch = {};
     for (const key of COMPANY_SAVE_KEYS) {

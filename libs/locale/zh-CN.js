@@ -12,6 +12,8 @@ module.exports = {
   tenantUnavailable: '租户不能使用',
   defaultTenantNotSet: '未设置默认租户',
   tenantParamsIncomplete: '租户参数配置不完整',
+  tenantManaged: '该租户由宿主系统同步管理，请在宿主系统中修改',
+  managedSnapshotInvalid: '托管租户同步数据不完整',
   languagesRequired: '支持语言列表不能为空',
   defaultLanguageNotSupported: '默认语言必须在支持语言列表中',
 

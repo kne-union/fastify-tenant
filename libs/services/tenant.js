@@ -119,9 +119,13 @@ module.exports = fp(async (fastify, options) => {
     return tenant;
   };
 
+  const emitChange = tenantId => fastify[options.name].emitChange?.({ tenantId, type: 'tenant' });
+
   const save = async ({ id, ...data }) => {
     const tenant = await detail({ id, withTenantSetting: false });
+    await services.managed?.assertNotManaged(tenant);
     await tenant.update(pick(data, ['name', 'description', 'logo', 'accountCount', 'themeColor', 'supportLanguage', 'defaultLanguage', 'serviceStartTime', 'serviceEndTime']));
+    emitChange(tenant.id);
     return tenant;
   };
 
@@ -138,10 +142,12 @@ module.exports = fp(async (fastify, options) => {
       throw createError(null, 'defaultLanguageNotSupported');
     }
     const tenant = await detail({ id: tenantId, withTenantSetting: false });
+    await services.managed?.assertNotManaged(tenant);
     await tenant.update({
       supportLanguage: languages,
       defaultLanguage: defaultLang
     });
+    emitChange(tenant.id);
     return {
       supportLanguage: languages,
       defaultLanguage: defaultLang
@@ -205,15 +211,19 @@ module.exports = fp(async (fastify, options) => {
 
   const setStatus = async ({ id, status }) => {
     const tenant = await detail({ id, withTenantSetting: false });
+    await services.managed?.assertNotManaged(tenant);
     await tenant.update({ status });
     await services.permissionChange?.notify({ tenantId: tenant.id, reason: 'tenant-status' });
+    emitChange(tenant.id);
     return tenant;
   };
 
   const remove = async ({ id }) => {
     const tenant = await detail({ id, withTenantSetting: false });
+    await services.managed?.assertNotManaged(tenant);
     await services.company.remove({ tenantId: id });
     await tenant.destroy();
+    emitChange(tenant.id);
   };
 
   const getToken = async ({ id }) => {

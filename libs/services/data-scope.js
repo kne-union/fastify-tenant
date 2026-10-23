@@ -9,7 +9,7 @@ const { getSequelize } = require('../utils/sequelize');
 /** @typedef {'self' | 'owner' | 'org' | 'orgSubtree'} DataScopeType */
 
 module.exports = fp(async (fastify, options) => {
-  const { models, services, permissions } = fastify[options.name];
+  const { models, services } = fastify[options.name];
   const { Op } = fastify.sequelize.Sequelize;
 
   const pickScopeMode = ({ scope, type }) => normalizeDataScopeType(type || scope, 'self');
@@ -249,7 +249,7 @@ module.exports = fp(async (fastify, options) => {
    * @returns {Promise<{ tenantUserIds: string[], moduleCode: string | null, type: DataScopeType, dataScopeOpen: boolean }>}
    */
   const resolveTenantUserIdsByPermissionCode = async ({ tenantId, currentTenantUserId, permissionCode, permissions: permissionsTree, transaction }) => {
-    const tree = permissionsTree || permissions;
+    const tree = permissionsTree || fastify[options.name].permissions;
     const found = findDataScopeByPermissionCode(tree, permissionCode);
     if (!found) {
       throw createError(null, 'permissionNotFound', { code: permissionCode });
@@ -308,7 +308,7 @@ module.exports = fp(async (fastify, options) => {
    */
   const resolveDataPermissionByCode = async ({ tenantId, currentTenantUserId, roleDetails, roles, permissionCode, permissions: permissionsTree, transaction }) => {
     if (await services.user.resolveIsTenantAdmin({ tenantId, roleDetails, roles, currentTenantUserId })) {
-      const tree = permissionsTree || permissions;
+      const tree = permissionsTree || fastify[options.name].permissions;
       const found = findDataScopeByPermissionCode(tree, permissionCode);
       if (!found) {
         throw createError(null, 'permissionNotFound', { code: permissionCode });

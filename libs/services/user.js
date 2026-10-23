@@ -31,7 +31,10 @@ module.exports = fp(async (fastify, options) => {
     }
   };
 
+  const emitChange = tenantId => fastify[options.name].emitChange?.({ tenantId, type: 'member' });
+
   const create = async ({ tenantId, avatar, name, email, phone: phoneRaw, description, tenantOrgIds: tenantOrgIdsInput, roles, options, transaction, synced, syncSource, sourceId }) => {
+    await services.managed?.assertNotManaged(tenantId);
     const phone = phoneRaw ? normalizePhone(phoneRaw) : phoneRaw;
     if (email && !synced && (await models.user.count({ where: { email, tenantId }, transaction })) > 0) {
       throw createBusinessError('USER_EMAIL_DUPLICATE', 'emailDuplicate');
@@ -68,7 +71,7 @@ module.exports = fp(async (fastify, options) => {
 
     const checkedRoles = await services.role.checkRoles({ tenantId, roles });
 
-    return await models.user.create(
+    const tenantUser = await models.user.create(
       {
         avatar,
         name,
@@ -85,6 +88,8 @@ module.exports = fp(async (fastify, options) => {
       },
       { transaction }
     );
+    emitChange(tenantId);
+    return tenantUser;
   };
 
   const detail = async ({ tenantId, id }) => {
@@ -119,6 +124,7 @@ module.exports = fp(async (fastify, options) => {
   const associate = async (authenticatePayload, { token }) => {
     const { payload } = fastify.jwt.decode(token);
     const { tenantId, id } = payload;
+    await services.managed?.assertNotManaged(tenantId);
     const tenantUser = await detail({ tenantId, id });
     if (tenantUser.userId) {
       throw createError(null, 'tenantUserAlreadyLinked');
@@ -129,6 +135,7 @@ module.exports = fp(async (fastify, options) => {
   };
 
   const inviteToken = async ({ tenantId, id }) => {
+    await services.managed?.assertNotManaged(tenantId);
     const tenantUser = await detail({ tenantId, id });
     const token = fastify.jwt.sign({ payload: { id: tenantUser.id, tenantId: tenantUser.tenantId } }, { expiresIn: '7d' });
     return { token };
@@ -171,6 +178,7 @@ module.exports = fp(async (fastify, options) => {
   const join = async (authenticatePayload, { token }) => {
     const { payload } = fastify.jwt.decode(token);
     const { id, tenantId } = payload;
+    await services.managed?.assertNotManaged(tenantId);
     const tenantUser = await detail({ tenantId, id });
     if (tenantUser.userId) {
       throw createError(null, 'inviteLinkUsed');
@@ -185,6 +193,7 @@ module.exports = fp(async (fastify, options) => {
     });
 
     await setDefaultTenant(authenticatePayload, { tenantId });
+    emitChange(tenantId);
   };
 
   const tenantList = async authenticatePayload => {
@@ -476,14 +485,17 @@ module.exports = fp(async (fastify, options) => {
     if (!normalized) {
       throw createError(null, 'tenantUserStatusInvalid');
     }
+    await services.managed?.assertNotManaged(tenantId);
     const tenantUser = await detail({ tenantId, id });
     await tenantUser.update({ status: normalized });
     await services.permissionChange?.notify({ tenantId, userIds: [tenantUser.userId], reason: 'tenant-user-status' });
+    emitChange(tenantId);
 
     return tenantUser;
   };
 
   const save = async ({ id, tenantId, tenantOrgIds: tenantOrgIdsInput, avatar, name, email, phone, roles = [], description, options }) => {
+    await services.managed?.assertNotManaged(tenantId);
     const tenantUser = await detail({ tenantId, id });
 
     if (phone) {
@@ -535,15 +547,18 @@ module.exports = fp(async (fastify, options) => {
     if (rolesChanged) {
       await services.permissionChange?.notify({ tenantId, userIds: [tenantUser.userId], reason: 'tenant-user-roles' });
     }
+    emitChange(tenantId);
 
     return tenantUser;
   };
 
   const remove = async ({ id, tenantId }) => {
+    await services.managed?.assertNotManaged(tenantId);
     const tenantUser = await detail({ tenantId, id });
     await models.org.update({ leaderUserId: null }, { where: { leaderUserId: id, tenantId } });
     await tenantUser.destroy();
     await services.permissionChange?.notify({ tenantId, userIds: [tenantUser.userId], reason: 'tenant-user-remove' });
+    emitChange(tenantId);
   };
 
   const permissionList = async ({ tenantId, id }) => {
@@ -840,6 +855,7 @@ module.exports = fp(async (fastify, options) => {
     if (!targetUserId) {
       throw createError(null, 'userIdRequired');
     }
+    await services.managed?.assertNotManaged(tenantId);
 
     const allowBind = await services.thirdLogin.isAllowThirdLoginBind({ tenantId });
     if (!allowBind) {
@@ -907,6 +923,7 @@ module.exports = fp(async (fastify, options) => {
     if (!targetUserId) {
       throw createError(null, 'userIdRequired');
     }
+    await services.managed?.assertNotManaged(tenantId);
     const tenantUser = await detail({ tenantId, id: targetUserId });
 
     if (platform) {
