@@ -209,7 +209,13 @@ describe('services 扩展（tenant / role / user / company / setting）', () => 
     assert.equal(byId.totalCount, 1);
     assert.equal(byId.pageData[0].id, u.id);
     await ctx.ns.services.user.setStatus({ tenantId, id: u.id, status: 'open' });
+    const sent = [];
+    const originalSendMessage = ctx.fastify.message.services.sendMessage;
+    ctx.fastify.message.services.sendMessage = async payload => sent.push(payload);
     await ctx.ns.services.user.sendInviteMessage({ tenantId, id: u.id });
+    ctx.fastify.message.services.sendMessage = originalSendMessage;
+    assert.equal(sent[0].code, 'INVITETENANT');
+    assert.equal(sent[0].tenantId, tenantId);
     await ctx.ns.services.user.remove({ tenantId, id: u.id });
   });
 

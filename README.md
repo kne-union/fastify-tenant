@@ -62,6 +62,12 @@ npm i --save @kne/fastify-tenant
 - 自定义组件管理（增删改查、复制）
 - 租户权限配置
 
+##### 邮件设置
+
+- 租户自定义 SMTP（密码只写不读，可测试连接 / 发送测试邮件），本租户邮件通过租户 SMTP 发送
+- 租户自定义邮件模版：复制全局模版后编辑、启用 / 停用、恢复默认、预览
+- 租户端与管理端均可配置，依赖 @kne/fastify-message 的租户模版与 `getEmailConfig`
+
 ##### 外部权限与托管租户
 
 - `setPermissionSource` 按 key 注册外部权限树（如子应用权限），可设为新租户默认不开通
@@ -96,6 +102,7 @@ npm i --save @kne/fastify-tenant
 | getAdminUserAuthenticate | function | 使用 fastify-account 的管理员认证 | 获取管理员认证函数 |
 | permissionsProfile | string | `./libs/permissions.js` | 权限配置文件路径（支持 .js / .yml / .json） |
 | intlNamespace | string | `intl` | @kne/fastify-intl 的命名空间；未注册时错误文案固定返回内置中文 |
+| excludeMessageCodes | array\<string\> | `[]` | 邮件设置中不允许租户自定义的模版编码（如账号验证码等拿不到租户上下文的邮件） |
 | onPermissionChange | function | `null` | 成员角色、成员状态、成员移除、角色权限 / 状态、租户状态 / 权限变化后回调，参数 `{ tenantId, userIds, reason }`（`userIds` 为账号用户 id）；回调异常只记录日志。接入 fastify-oidc 时设为 `payload => fastify.oidc.onPermissionChange(payload)` |
 
 > **当前租户来源**：`authenticate.tenantUser` 与 `services.user.getTenantUserInfo` 优先使用 `authenticatePayload.tenantId`（如 OIDC access_token 中的租户），没有时才回退到用户的默认租户（`userDefault`）。
@@ -207,6 +214,20 @@ fastify.register(require('@kne/fastify-tenant'));
 | permissions | JSON | 租户权限 |
 | options | JSON | 配置项 |
 
+##### smtp_config（租户 SMTP 配置）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| enabled | BOOLEAN | 是否启用，默认 true；关闭后使用系统邮箱发送 |
+| host | STRING | SMTP 服务器地址 |
+| port | INTEGER | 端口，默认 465 |
+| secure | BOOLEAN | 是否使用 SSL/TLS，默认 true |
+| user | STRING | SMTP 账号 |
+| pass | STRING | 密码 / 授权码（不通过 API 返回） |
+| fromName | STRING | 发件人名称 |
+| fromAddress | STRING | 发件人地址，为空时使用 SMTP 账号 |
+| options | JSONB | 扩展字段 |
+
 ##### shared_group（共享组）
 
 | 字段 | 类型 | 说明 |
@@ -243,6 +264,7 @@ fastify.register(require('@kne/fastify-tenant'));
 | 角色管理 (role) | create, view, edit, remove | - |
 | 共享组 (shared-group) | create, view, edit, remove | open: true, list: [read, write], type: org |
 | 用户管理 (user-manager) | create, view, edit, remove, invite | - |
+| 邮件设置 (mail-setting) | view, edit | - |
 
 #### 程序化 API
 
@@ -258,6 +280,7 @@ fastify.register(require('@kne/fastify-tenant'));
 | `services.company` | 公司信息服务 |
 | `services.setting` | 租户设置服务 |
 | `services.sharedGroup` | 共享组服务 |
+| `services.mail` | 租户 SMTP 与邮件模版服务（依赖 @kne/fastify-message） |
 | `services.dataScope` | 数据范围服务 |
 | `services.managed` | 托管租户服务（见下方「托管租户」） |
 | `authenticate.tenantUser` | 租户用户认证中间件 |
@@ -788,6 +811,67 @@ POST `/api/tenant/shared_group/remove`
 | 参数 | 位置 | 类型 | 必填 | 说明 |
 |------|------|------|------|------|
 | id | body | string | 是 | 共享组 ID |
+
+---
+
+#### 租户邮件设置
+
+租户可以配置自己的 SMTP，并自定义邮件模版；本租户的邮件（调用 `fastify.message.services.sendMessage` 时传 `tenantId`）优先使用租户模版和租户 SMTP，未配置或停用时回退到全局模版和系统邮箱。邀请加入租户邮件（`INVITETENANT`）已自动传 `tenantId`。
+
+依赖 [@kne/fastify-message](https://www.npmjs.com/package/@kne/fastify-message)（支持 tenantId 的版本），需要把租户 SMTP 解析器接到 fastify-message：
+
+```js
+fastify.register(require('@kne/fastify-message'), {
+  emailConfig: { host, port, secure, user, pass },
+  getEmailConfig: ({ tenantId }) => fastify.tenant.services.mail.resolveEmailConfig({ tenantId })
+});
+fastify.register(require('@kne/fastify-tenant'), {
+  excludeMessageCodes: ['VERIFY_CODE'] // 账号相关等拿不到租户的模版，不在租户模版列表中展示
+});
+```
+
+- 租户模版：把全局邮件模版复制为本租户模版后编辑，停用或恢复默认即回退到全局模版；只开放邮件类型（type 0）的模版
+- 账号注册、登录验证码等邮件发送时没有租户上下文，不会使用租户模版与 SMTP，建议通过 `excludeMessageCodes` 隐藏
+- 权限：租户端接口要求租户管理员，或拥有 `setting:mail-setting:view`（查看）/ `setting:mail-setting:edit`（修改，含查看）权限；无权限返回 403
+
+##### services.mail 方法
+
+| 方法 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `getSmtpConfig` | `{ tenantId }` | `{ configured, enabled, host, port, secure, user, fromName, fromAddress, hasPassword }` | 不返回密码 |
+| `saveSmtpConfig` | `{ tenantId, enabled?, host, port?, secure?, user, pass?, fromName?, fromAddress? }` | 同上 | `pass` 为空时保留原密码；首次保存必填 |
+| `removeSmtpConfig` | `{ tenantId }` | - | 清除配置，恢复系统邮箱 |
+| `testSmtpConfig` | `{ tenantId, to?, ...SMTP 字段 }` | `{ success }` | 用传入配置（未填项取已保存值）连接登录，传 `to` 时发送测试邮件；失败 400 |
+| `resolveEmailConfig` | `{ tenantId }` | `{ host, port, secure, user, pass, fromName, fromAddress } \| null` | 仅返回启用中的配置（含密码），供 fastify-message `getEmailConfig` 使用，不要通过接口暴露 |
+| `templateList` | `{ tenantId }` | `{ list: [{ code, name, description, systemTemplateId, customized, templateId, status, updatedAt }] }` | 全局邮件模版（排除 `excludeMessageCodes`）及本租户自定义状态 |
+| `templateDetail` | `{ tenantId, code }` | `{ customized, template }` | 已自定义返回租户模版，否则返回当前生效的全局模版 |
+| `templateCustomize` | `{ tenantId, code }` | 租户模版 | 复制全局模版为本租户模版并启用；已自定义时直接返回 |
+| `templateSave` | `{ tenantId, code, name?, subject?, content?, description?, variables? }` | 租户模版 | 须先自定义；Liquid 语法错误返回 400 |
+| `templateSetStatus` | `{ tenantId, code, status }` | 租户模版 | `status`：0 启用，1 停用（停用后使用全局模版） |
+| `templateReset` | `{ tenantId, code }` | - | 删除租户模版，恢复全局模版 |
+| `templatePreview` | `{ tenantId, code, template?, props? }` | `{ subject, html, text, props }` | 传 `template` 预览未保存内容，否则预览当前生效模版 |
+
+##### 租户端接口
+
+前缀 `/api/tenant/mail-setting`，需用户认证 + 租户用户上下文，`tenantId` 取自登录态。
+
+| 方法 | 路径 | 权限 | 参数 | 对应服务 |
+|------|------|------|------|----------|
+| GET | `/smtp-detail` | view | - | `getSmtpConfig` |
+| POST | `/smtp-save` | edit | body：`host`、`user` 必填，`enabled`、`port`、`secure`、`pass`、`fromName`、`fromAddress` | `saveSmtpConfig` |
+| POST | `/smtp-remove` | edit | - | `removeSmtpConfig` |
+| POST | `/smtp-test` | edit | body：SMTP 字段 + `to` | `testSmtpConfig` |
+| GET | `/template-list` | view | - | `templateList` |
+| GET | `/template-detail` | view | query：`code` | `templateDetail` |
+| POST | `/template-customize` | edit | body：`code` | `templateCustomize` |
+| POST | `/template-save` | edit | body：`code` 必填，`name`、`subject`、`content`、`description`、`variables` | `templateSave` |
+| POST | `/template-set-status` | edit | body：`code`、`status`（0 / 1） | `templateSetStatus` |
+| POST | `/template-reset` | edit | body：`code` | `templateReset` |
+| POST | `/template-preview` | view | body：`code` 必填，`template`、`props` | `templatePreview` |
+
+##### 管理端接口
+
+前缀 `/api/tenant/admin/mail-setting`，需用户认证 + 管理员认证，路径与参数同租户端，另需显式传 `tenantId`（GET 在 query，POST 在 body）。
 
 ---
 

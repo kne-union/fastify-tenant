@@ -101,6 +101,13 @@ module.exports = {
   customComponentNotFound: '自定义组件不存在',
   settingKeyNotFound: '{key}已不存在',
 
+  messagePluginNotRegistered: '未注册 fastify-message 插件，无法使用邮件设置',
+  smtpPasswordRequired: '首次保存 SMTP 配置时密码不能为空',
+  smtpHostRequired: 'SMTP 服务器地址不能为空',
+  mailTemplateNotFound: '邮件模版{code}不存在',
+  mailTemplateNotCustomized: '邮件模版{code}尚未自定义',
+  mailSettingForbidden: '没有邮件设置的操作权限',
+
   'permission.setting': '设置',
   'permission.setting:company-setting': '公司信息',
   'permission.setting:company-setting:view': '查看',
@@ -126,5 +133,8 @@ module.exports = {
   'permission.setting:user-manager:view': '查看',
   'permission.setting:user-manager:edit': '编辑',
   'permission.setting:user-manager:remove': '删除',
-  'permission.setting:user-manager:invite': '邀请'
+  'permission.setting:user-manager:invite': '邀请',
+  'permission.setting:mail-setting': '邮件设置',
+  'permission.setting:mail-setting:view': '查看',
+  'permission.setting:mail-setting:edit': '编辑'
 };

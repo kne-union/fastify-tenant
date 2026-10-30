@@ -50,7 +50,8 @@ module.exports = fp(
         permissionsProfile: path.resolve(process.cwd(), './libs/permissions.js'),
         syncOrgTask: null,
         sendOrgMessage: null,
-        onPermissionChange: null
+        onPermissionChange: null,
+        excludeMessageCodes: []
       },
       options
     );
