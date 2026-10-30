@@ -116,6 +116,20 @@ module.exports = {
               code: 'invite'
             }
           ]
+        },
+        {
+          name: '邮件设置',
+          code: 'mail-setting',
+          permissions: [
+            {
+              name: '查看',
+              code: 'view'
+            },
+            {
+              name: '编辑',
+              code: 'edit'
+            }
+          ]
         }
       ]
     }

@@ -101,6 +101,13 @@ module.exports = {
   customComponentNotFound: 'Custom component does not exist',
   settingKeyNotFound: '{key} no longer exists',
 
+  messagePluginNotRegistered: 'fastify-message is not registered, mail settings are unavailable',
+  smtpPasswordRequired: 'Password is required when saving the SMTP configuration for the first time',
+  smtpHostRequired: 'SMTP host is required',
+  mailTemplateNotFound: 'Mail template {code} does not exist',
+  mailTemplateNotCustomized: 'Mail template {code} has not been customized',
+  mailSettingForbidden: 'You do not have permission to manage mail settings',
+
   'permission.setting': 'Settings',
   'permission.setting:company-setting': 'Company information',
   'permission.setting:company-setting:view': 'View',
@@ -126,5 +133,8 @@ module.exports = {
   'permission.setting:user-manager:view': 'View',
   'permission.setting:user-manager:edit': 'Edit',
   'permission.setting:user-manager:remove': 'Delete',
-  'permission.setting:user-manager:invite': 'Invite'
+  'permission.setting:user-manager:invite': 'Invite',
+  'permission.setting:mail-setting': 'Mail settings',
+  'permission.setting:mail-setting:view': 'View',
+  'permission.setting:mail-setting:edit': 'Edit'
 };

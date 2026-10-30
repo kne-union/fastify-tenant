@@ -153,6 +153,7 @@ module.exports = fp(async (fastify, options) => {
       name,
       type: tenantUser.email ? 0 : 1,
       code: 'INVITETENANT',
+      tenantId,
       props: {
         inviteUrl: `${fastify.config.ORIGIN}/join-tenant?token=${token}`,
         username: tenantUser.name,
