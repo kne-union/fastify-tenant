@@ -118,16 +118,36 @@ module.exports = {
           ]
         },
         {
-          name: '邮件设置',
+          name: '消息设置',
           code: 'mail-setting',
-          permissions: [
+          modules: [
             {
-              name: '查看',
-              code: 'view'
+              name: 'SMTP 设置',
+              code: 'smtp',
+              permissions: [
+                {
+                  name: '查看',
+                  code: 'view'
+                },
+                {
+                  name: '编辑',
+                  code: 'edit'
+                }
+              ]
             },
             {
-              name: '编辑',
-              code: 'edit'
+              name: '消息模版',
+              code: 'template',
+              permissions: [
+                {
+                  name: '查看',
+                  code: 'view'
+                },
+                {
+                  name: '编辑',
+                  code: 'edit'
+                }
+              ]
             }
           ]
         }

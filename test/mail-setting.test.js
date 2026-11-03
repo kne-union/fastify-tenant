@@ -53,7 +53,8 @@ function createMessageServices() {
   };
 }
 
-async function buildServiceApp({ excludeMessageCodes = [] } = {}) {
+// tenantScope: 模拟 fastify-message 2.1 的 tenantTemplate（白名单 + 已关闭的编码）
+async function buildServiceApp({ excludeMessageCodes = [], tenantScope } = {}) {
   const fastify = Fastify({ logger: false });
   const tenants = new Map([['t1', { id: 't1', name: 'Acme' }]]);
   const configs = new Map();
@@ -72,6 +73,14 @@ async function buildServiceApp({ excludeMessageCodes = [] } = {}) {
   };
   fastify.decorate(NS, { models, services: {} });
   const message = createMessageServices();
+  if (tenantScope) {
+    message.services.tenantTemplate = {
+      list: async ({ type, includeTenantClosed }) =>
+        message.templates
+          .filter(tpl => tpl.type === type && tpl.level === 0 && tpl.tenantId === '' && tpl.status === 0)
+          .filter(tpl => tenantScope.whitelist.includes(tpl.code) && (includeTenantClosed || !tenantScope.closed.includes(tpl.code)))
+    };
+  }
   fastify.decorate('message', { services: message.services });
   await fastify.register(require('../libs/services/mail.js'), { name: NS, excludeMessageCodes });
   await fastify.ready();
@@ -160,6 +169,29 @@ describe('services.mail', () => {
     }
   });
 
+  it('模版：fastify-message 提供 tenantTemplate 时按白名单 ∩ 平台开放，管理端代管不受开放开关限制', async () => {
+    const { fastify, mail, message } = await buildServiceApp({ excludeMessageCodes: ['B'], tenantScope: { whitelist: ['A', 'B', 'C'], closed: ['C'] } });
+    try {
+      message.add({ code: 'A', name: 'A', subject: 'a', content: 'a' });
+      message.add({ code: 'B', name: 'B', subject: 'b', content: 'b' });
+      message.add({ code: 'C', name: 'C', subject: 'c', content: 'c' });
+      message.add({ code: 'D', name: 'D', subject: 'd', content: 'd' });
+
+      assert.deepEqual((await mail.templateList({ tenantId: 't1' })).list.map(item => item.code), ['A']);
+      assert.deepEqual((await mail.templateList({ tenantId: 't1', includeTenantClosed: true })).list.map(item => item.code), ['A', 'C']);
+
+      await assert.rejects(() => mail.templateCustomize({ tenantId: 't1', code: 'C' }), /不存在/);
+      await assert.rejects(() => mail.templateDetail({ tenantId: 't1', code: 'D' }), /不存在/);
+      const own = await mail.templateCustomize({ tenantId: 't1', code: 'C', includeTenantClosed: true });
+      assert.equal(own.tenantId, 't1');
+      await assert.rejects(() => mail.templateSave({ tenantId: 't1', code: 'C', subject: 's' }), /不存在/);
+      await mail.templateSave({ tenantId: 't1', code: 'C', subject: 's', includeTenantClosed: true });
+      assert.equal((await mail.templateDetail({ tenantId: 't1', code: 'C', includeTenantClosed: true })).template.subject, 's');
+    } finally {
+      await fastify.close();
+    }
+  });
+
   it('未注册 fastify-message 时模版接口报错', async () => {
     const fastify = Fastify({ logger: false });
     fastify.decorate(NS, { models: { tenant: { findByPk: async () => ({ id: 't1' }) }, smtpConfig: {} }, services: {} });
@@ -233,7 +265,7 @@ describe('mail-setting 路由', () => {
     ({ fastify, calls } = await buildControllerApp({ permissions: ['setting:mail-setting:view'] }));
     try {
       assert.equal((await fastify.inject({ method: 'GET', url: `${prefix}/mail-setting/template-list` })).statusCode, 200);
-      assert.deepEqual(calls[0], ['templateList', { tenantId: 'tid-1' }]);
+      assert.deepEqual(calls[0], ['templateList', { tenantId: 'tid-1', includeTenantClosed: false }]);
       const res = await fastify.inject({ method: 'POST', url: `${prefix}/mail-setting/smtp-save`, payload: { host: 'h', user: 'u' } });
       assert.equal(res.statusCode, 403);
     } finally {
@@ -250,7 +282,7 @@ describe('mail-setting 路由', () => {
       assert.equal((await fastify.inject({ method: 'POST', url: `${prefix}/mail-setting/smtp-remove` })).statusCode, 200);
       const status = await fastify.inject({ method: 'POST', url: `${prefix}/mail-setting/template-set-status`, payload: { code: 'A', status: 1 } });
       assert.equal(status.statusCode, 200);
-      assert.deepEqual(calls[2], ['templateSetStatus', { tenantId: 'tid-1', code: 'A', status: 1 }]);
+      assert.deepEqual(calls[2], ['templateSetStatus', { tenantId: 'tid-1', code: 'A', status: 1, includeTenantClosed: false }]);
     } finally {
       await fastify.close();
     }
@@ -261,10 +293,30 @@ describe('mail-setting 路由', () => {
     try {
       assert.equal((await fastify.inject({ method: 'GET', url: `${prefix}/admin/mail-setting/smtp-detail` })).statusCode, 400);
       assert.equal((await fastify.inject({ method: 'GET', url: `${prefix}/admin/mail-setting/template-detail?tenantId=t9&code=A` })).statusCode, 200);
-      assert.deepEqual(calls[0], ['templateDetail', { tenantId: 't9', code: 'A' }]);
+      assert.deepEqual(calls[0], ['templateDetail', { tenantId: 't9', code: 'A', includeTenantClosed: true }]);
       const res = await fastify.inject({ method: 'POST', url: `${prefix}/admin/mail-setting/template-customize`, payload: { tenantId: 't9', code: 'A' } });
       assert.equal(res.statusCode, 200);
-      assert.deepEqual(calls[1], ['templateCustomize', { tenantId: 't9', code: 'A' }]);
+      assert.deepEqual(calls[1], ['templateCustomize', { tenantId: 't9', code: 'A', includeTenantClosed: true }]);
+    } finally {
+      await fastify.close();
+    }
+  });
+
+  it('租户端：按 SMTP 设置 / 消息模版子模块分别放行，edit 包含 view', async () => {
+    let { fastify } = await buildControllerApp({ permissions: ['setting:mail-setting:smtp:view'] });
+    try {
+      assert.equal((await fastify.inject({ method: 'GET', url: `${prefix}/mail-setting/smtp-detail` })).statusCode, 200);
+      assert.equal((await fastify.inject({ method: 'POST', url: `${prefix}/mail-setting/smtp-save`, payload: { host: 'h', user: 'u' } })).statusCode, 403);
+      assert.equal((await fastify.inject({ method: 'GET', url: `${prefix}/mail-setting/template-list` })).statusCode, 403);
+    } finally {
+      await fastify.close();
+    }
+
+    ({ fastify } = await buildControllerApp({ permissions: ['setting:mail-setting:template:edit'] }));
+    try {
+      assert.equal((await fastify.inject({ method: 'GET', url: `${prefix}/mail-setting/template-list` })).statusCode, 200);
+      assert.equal((await fastify.inject({ method: 'POST', url: `${prefix}/mail-setting/template-reset`, payload: { code: 'A' } })).statusCode, 200);
+      assert.equal((await fastify.inject({ method: 'GET', url: `${prefix}/mail-setting/smtp-detail` })).statusCode, 403);
     } finally {
       await fastify.close();
     }
