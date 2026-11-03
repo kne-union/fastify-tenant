@@ -106,9 +106,19 @@ module.exports = fp(async (fastify, options) => {
 
   const listTemplates = async filter => (await getMessageServices().template.list({ filter: Object.assign({ type: EMAIL_TYPE }, filter), perPage: TEMPLATE_PAGE_SIZE })).pageData;
 
-  // 全局邮件模版按编码分组，取当前生效的一条：启用的优先，同为启用 / 停用时业务模版优先
-  const getSystemTemplates = async () => {
+  const toPlain = tpl => (tpl && typeof tpl.get === 'function' ? tpl.get({ plain: true }) : tpl);
+
+  // 可给租户定制的全局邮件模版：fastify-message 提供 tenantTemplate 时按其白名单 ∩ 平台开放（includeTenantClosed 时忽略开放开关）；
+  // 旧版 fastify-message 按编码分组取当前生效的一条（启用的优先，同为启用 / 停用时业务模版优先）。两种情况都再排除 excludeMessageCodes
+  const getSystemTemplates = async ({ tenantId, includeTenantClosed } = {}) => {
     const result = new Map();
+    const { tenantTemplate } = getMessageServices();
+    if (tenantTemplate) {
+      for (const tpl of await tenantTemplate.list({ tenantId: String(tenantId), type: EMAIL_TYPE, includeTenantClosed: !!includeTenantClosed })) {
+        if (!excludeMessageCodes.includes(tpl.code)) result.set(tpl.code, toPlain(tpl));
+      }
+      return result;
+    }
     for (const tpl of await listTemplates({ tenantId: '' })) {
       if (excludeMessageCodes.includes(tpl.code)) continue;
       const current = result.get(tpl.code);
@@ -120,8 +130,8 @@ module.exports = fp(async (fastify, options) => {
     return result;
   };
 
-  const getSystemTemplate = async code => {
-    const tpl = (await getSystemTemplates()).get(code);
+  const getSystemTemplate = async ({ tenantId, code, includeTenantClosed }) => {
+    const tpl = (await getSystemTemplates({ tenantId, includeTenantClosed })).get(code);
     if (!tpl) {
       throw createError(null, 'mailTemplateNotFound', { code });
     }
@@ -138,15 +148,16 @@ module.exports = fp(async (fastify, options) => {
     return tpl;
   };
 
-  const templateList = async ({ tenantId }) => {
+  const templateList = async ({ tenantId, includeTenantClosed }) => {
     await assertTenant(tenantId);
-    const systemTemplates = await getSystemTemplates();
+    const systemTemplates = await getSystemTemplates({ tenantId, includeTenantClosed });
     const tenantTemplates = new Map((await listTemplates({ tenantId: String(tenantId), level: 1 })).map(item => [item.code, item]));
     return {
       list: [...systemTemplates.values()].map(tpl => {
         const own = tenantTemplates.get(tpl.code);
         return {
           code: tpl.code,
+          type: EMAIL_TYPE,
           name: tpl.name,
           description: tpl.description,
           systemTemplateId: tpl.id,
@@ -160,17 +171,17 @@ module.exports = fp(async (fastify, options) => {
   };
 
   // 已自定义返回租户模版，否则返回当前生效的全局模版
-  const templateDetail = async ({ tenantId, code }) => {
+  const templateDetail = async ({ tenantId, code, includeTenantClosed }) => {
     await assertTenant(tenantId);
-    const systemTemplate = await getSystemTemplate(code);
+    const systemTemplate = await getSystemTemplate({ tenantId, code, includeTenantClosed });
     const own = await findTenantTemplate({ tenantId, code });
     return { customized: !!own, template: own || systemTemplate };
   };
 
   // 把全局模版复制为本租户的模版并启用；已自定义时直接返回
-  const templateCustomize = async ({ tenantId, code }) => {
+  const templateCustomize = async ({ tenantId, code, includeTenantClosed }) => {
     await assertTenant(tenantId);
-    const systemTemplate = await getSystemTemplate(code);
+    const systemTemplate = await getSystemTemplate({ tenantId, code, includeTenantClosed });
     const own = await findTenantTemplate({ tenantId, code });
     if (own) {
       return own;
@@ -181,21 +192,24 @@ module.exports = fp(async (fastify, options) => {
     return await template.setStatus({ id: copied.id, status: 0 });
   };
 
-  const templateSave = async ({ tenantId, code, ...data }) => {
+  const templateSave = async ({ tenantId, code, includeTenantClosed, ...data }) => {
     await assertTenant(tenantId);
+    await getSystemTemplate({ tenantId, code, includeTenantClosed });
     const own = await getTenantTemplate({ tenantId, code });
     return await getMessageServices().template.save(Object.assign({ id: own.id }, pickFields(data, ['name', 'subject', 'content', 'description', 'variables', 'extra'])));
   };
 
-  const templateSetStatus = async ({ tenantId, code, status }) => {
+  const templateSetStatus = async ({ tenantId, code, status, includeTenantClosed }) => {
     await assertTenant(tenantId);
+    await getSystemTemplate({ tenantId, code, includeTenantClosed });
     const own = await getTenantTemplate({ tenantId, code });
     return await getMessageServices().template.setStatus({ id: own.id, status });
   };
 
   // 删除租户模版，恢复使用全局模版
-  const templateReset = async ({ tenantId, code }) => {
+  const templateReset = async ({ tenantId, code, includeTenantClosed }) => {
     await assertTenant(tenantId);
+    await getSystemTemplate({ tenantId, code, includeTenantClosed });
     const own = await findTenantTemplate({ tenantId, code });
     if (own) {
       await getMessageServices().template.remove({ id: own.id });
@@ -203,8 +217,8 @@ module.exports = fp(async (fastify, options) => {
   };
 
   // 传 template 时预览未保存的内容，否则预览当前生效的模版
-  const templatePreview = async ({ tenantId, code, template, props }) => {
-    const { template: current } = await templateDetail({ tenantId, code });
+  const templatePreview = async ({ tenantId, code, template, props, includeTenantClosed }) => {
+    const { template: current } = await templateDetail({ tenantId, code, includeTenantClosed });
     const target = template ? Object.assign({ type: EMAIL_TYPE, variables: current.variables }, template) : null;
     return await getMessageServices().template.render(target ? { template: target, props } : { templateId: current.id, props });
   };

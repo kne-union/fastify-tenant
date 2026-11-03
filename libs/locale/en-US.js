@@ -106,7 +106,7 @@ module.exports = {
   smtpHostRequired: 'SMTP host is required',
   mailTemplateNotFound: 'Mail template {code} does not exist',
   mailTemplateNotCustomized: 'Mail template {code} has not been customized',
-  mailSettingForbidden: 'You do not have permission to manage mail settings',
+  mailSettingForbidden: 'You do not have permission to manage message settings',
 
   'permission.setting': 'Settings',
   'permission.setting:company-setting': 'Company information',
@@ -134,7 +134,11 @@ module.exports = {
   'permission.setting:user-manager:edit': 'Edit',
   'permission.setting:user-manager:remove': 'Delete',
   'permission.setting:user-manager:invite': 'Invite',
-  'permission.setting:mail-setting': 'Mail settings',
-  'permission.setting:mail-setting:view': 'View',
-  'permission.setting:mail-setting:edit': 'Edit'
+  'permission.setting:mail-setting': 'Message settings',
+  'permission.setting:mail-setting:smtp': 'SMTP settings',
+  'permission.setting:mail-setting:smtp:view': 'View',
+  'permission.setting:mail-setting:smtp:edit': 'Edit',
+  'permission.setting:mail-setting:template': 'Message templates',
+  'permission.setting:mail-setting:template:view': 'View',
+  'permission.setting:mail-setting:template:edit': 'Edit'
 };

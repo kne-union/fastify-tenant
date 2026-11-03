@@ -45,6 +45,7 @@ const templateList = () =>
       '可自定义的邮件模版',
       R.obj('邮件模版', {
         code: R.str('模版编码'),
+        type: R.num('模版类型，固定为 0 邮件'),
         name: R.str('模版名称'),
         description: R.str('模版描述'),
         systemTemplateId: R.any('当前生效的全局模版 ID'),
@@ -63,11 +64,14 @@ module.exports = fp(async (fastify, options) => {
 
   const readValue = (tenantUser, key) => (typeof tenantUser.getDataValue === 'function' ? tenantUser.getDataValue(key) : tenantUser[key]);
 
-  // 租户管理员或拥有 setting:mail-setting 对应权限的成员可以操作；有 edit 权限即可查看
-  const requireMailPermission = action => async request => {
+  // 租户管理员，或拥有 setting:mail-setting:{smtp|template}:{view|edit} 的成员可以操作；有 edit 权限即可查看。
+  // 不分子模块的 setting:mail-setting:view / edit 同时作用于 SMTP 与模版
+  const requireMailPermission = (module, action) => async request => {
     const tenantUser = request[options.tenantUserContextName || 'tenantUserInfo'];
     const permissions = readValue(tenantUser, 'permissions') || [];
-    if (permissions.includes(`${MAIL_PERMISSION}:${action}`) || (action === 'view' && permissions.includes(`${MAIL_PERMISSION}:edit`))) {
+    const actions = action === 'view' ? ['view', 'edit'] : [action];
+    const granted = actions.some(item => permissions.includes(`${MAIL_PERMISSION}:${module}:${item}`) || permissions.includes(`${MAIL_PERMISSION}:${item}`));
+    if (granted) {
       return;
     }
     const isAdmin = await services.user.resolveIsTenantAdmin({
@@ -84,15 +88,19 @@ module.exports = fp(async (fastify, options) => {
   const scopes = [
     {
       prefix: `${options.prefix}/mail-setting`,
-      tag: '租户-邮件设置',
+      tag: '租户-消息设置',
       withTenantId: false,
-      onRequest: action => [authenticate.user, authenticate.tenantUser, requireMailPermission(action)],
+      // 租户端只能看到、定制平台开放给租户的模版（fastify-message 白名单 ∩ tenantOpen）
+      includeTenantClosed: false,
+      onRequest: route => [authenticate.user, authenticate.tenantUser, requireMailPermission(route.module, route.action)],
       getTenantId: request => request[options.tenantUserContextName || 'tenantUserInfo'].tenantId
     },
     {
       prefix: `${options.prefix}/admin/mail-setting`,
-      tag: '管理员-邮件设置',
+      tag: '管理员-消息设置',
       withTenantId: true,
+      // 平台代租户管理只受白名单限制，不受 tenantOpen 开关限制
+      includeTenantClosed: true,
       onRequest: () => [options.getUserAuthenticate(), options.getAdminUserAuthenticate()],
       getTenantId: request => (request.method === 'GET' ? request.query : request.body).tenantId
     }
@@ -102,6 +110,7 @@ module.exports = fp(async (fastify, options) => {
     {
       method: 'GET',
       url: 'smtp-detail',
+      module: 'smtp',
       action: 'view',
       summary: '获取租户 SMTP 配置',
       response: R.success('租户 SMTP 配置', smtpConfig()),
@@ -110,6 +119,7 @@ module.exports = fp(async (fastify, options) => {
     {
       method: 'POST',
       url: 'smtp-save',
+      module: 'smtp',
       action: 'edit',
       summary: '保存租户 SMTP 配置',
       description: '启用后本租户的邮件（调用 sendMessage 时传 tenantId）通过该 SMTP 发送；密码留空表示不修改，首次保存必填',
@@ -121,6 +131,7 @@ module.exports = fp(async (fastify, options) => {
     {
       method: 'POST',
       url: 'smtp-remove',
+      module: 'smtp',
       action: 'edit',
       summary: '清除租户 SMTP 配置',
       description: '清除后本租户邮件恢复使用系统邮箱发送',
@@ -133,6 +144,7 @@ module.exports = fp(async (fastify, options) => {
     {
       method: 'POST',
       url: 'smtp-test',
+      module: 'smtp',
       action: 'edit',
       summary: '测试租户 SMTP 配置',
       description: '用表单中的配置（未保存也可）连接 SMTP 并登录，传 to 时再发送一封测试邮件；密码留空时使用已保存的密码',
@@ -143,72 +155,79 @@ module.exports = fp(async (fastify, options) => {
     {
       method: 'GET',
       url: 'template-list',
+      module: 'template',
       action: 'view',
       summary: '获取可自定义的邮件模版列表',
-      description: '列出全局邮件模版（不含 excludeMessageCodes），并标记本租户是否已自定义',
+      description: '列出可给本租户定制的全局邮件模版（fastify-message 白名单 ∩ 平台开放，管理端不受开放开关限制，再排除 excludeMessageCodes），并标记本租户是否已自定义',
       response: R.success('邮件模版列表', templateList()),
-      handler: tenantId => services.mail.templateList({ tenantId })
+      handler: (tenantId, query, scope) => services.mail.templateList(Object.assign({ tenantId }, scope))
     },
     {
       method: 'GET',
       url: 'template-detail',
+      module: 'template',
       action: 'view',
       summary: '获取邮件模版详情',
       description: '已自定义时返回租户模版，否则返回当前生效的全局模版',
       properties: { code: codeProp() },
       required: ['code'],
       response: R.success('邮件模版详情', R.obj('邮件模版详情', { customized: R.bool('是否已自定义'), template: template() })),
-      handler: (tenantId, query) => services.mail.templateDetail({ tenantId, code: query.code })
+      handler: (tenantId, query, scope) => services.mail.templateDetail(Object.assign({ tenantId, code: query.code }, scope))
     },
     {
       method: 'POST',
       url: 'template-customize',
+      module: 'template',
       action: 'edit',
       summary: '自定义邮件模版',
       description: '把全局模版复制为本租户模版并启用；已自定义时直接返回',
       properties: { code: codeProp() },
       required: ['code'],
       response: R.success('租户模版', template()),
-      handler: (tenantId, body) => services.mail.templateCustomize({ tenantId, code: body.code })
+      handler: (tenantId, body, scope) => services.mail.templateCustomize(Object.assign({ tenantId, code: body.code }, scope))
     },
     {
       method: 'POST',
       url: 'template-save',
+      module: 'template',
       action: 'edit',
       summary: '保存租户邮件模版',
       properties: Object.assign({ code: codeProp() }, templateBodyProperties()),
       required: ['code'],
       response: R.success('保存后的租户模版', template()),
-      handler: (tenantId, body) => services.mail.templateSave(Object.assign({}, body, { tenantId }))
+      handler: (tenantId, body, scope) => services.mail.templateSave(Object.assign({}, body, { tenantId }, scope))
     },
     {
       method: 'POST',
       url: 'template-set-status',
+      module: 'template',
       action: 'edit',
       summary: '启用 / 停用租户邮件模版',
       description: '停用后本租户使用全局模版',
       properties: { code: codeProp(), status: { type: 'integer', enum: [0, 1], description: '0 启用，1 停用' } },
       required: ['code', 'status'],
       response: R.success('更新后的租户模版', template()),
-      handler: (tenantId, body) => services.mail.templateSetStatus({ tenantId, code: body.code, status: body.status })
+      handler: (tenantId, body, scope) => services.mail.templateSetStatus(Object.assign({ tenantId, code: body.code, status: body.status }, scope))
     },
     {
       method: 'POST',
       url: 'template-reset',
+      module: 'template',
       action: 'edit',
       summary: '恢复默认邮件模版',
       description: '删除本租户模版，恢复使用全局模版',
       properties: { code: codeProp() },
       required: ['code'],
       response: R.empty(),
-      handler: async (tenantId, body) => {
-        await services.mail.templateReset({ tenantId, code: body.code });
+      handler: async (tenantId, body, scope) => {
+        await services.mail.templateReset(Object.assign({ tenantId, code: body.code }, scope));
         return {};
       }
     },
     {
       method: 'POST',
       url: 'template-preview',
+      module: 'template',
       action: 'view',
       summary: '预览邮件模版',
       description: '传 template 时预览未保存的内容，否则预览当前生效的模版；props 与变量示例值合并',
@@ -219,7 +238,7 @@ module.exports = fp(async (fastify, options) => {
       },
       required: ['code'],
       response: R.success('渲染结果', R.obj('渲染结果', { subject: R.str('邮件主题'), html: R.str('邮件 HTML'), text: R.str('纯文本'), props: R.any('实际使用的变量') })),
-      handler: (tenantId, body) => services.mail.templatePreview({ tenantId, code: body.code, template: body.template, props: body.props })
+      handler: (tenantId, body, scope) => services.mail.templatePreview(Object.assign({ tenantId, code: body.code, template: body.template, props: body.props }, scope))
     }
   ];
 
@@ -231,7 +250,7 @@ module.exports = fp(async (fastify, options) => {
       fastify.route({
         method: route.method,
         url: `${scope.prefix}/${route.url}`,
-        onRequest: scope.onRequest(route.action),
+        onRequest: scope.onRequest(route),
         schema: Object.assign(
           { tags: [scope.tag], summary: route.summary, response: route.response },
           route.description ? { description: route.description } : {},
@@ -240,7 +259,7 @@ module.exports = fp(async (fastify, options) => {
         handler: async request => {
           const input = Object.assign({}, route.method === 'GET' ? request.query : request.body);
           delete input.tenantId;
-          return await route.handler(scope.getTenantId(request), input);
+          return await route.handler(scope.getTenantId(request), input, { includeTenantClosed: scope.includeTenantClosed });
         }
       });
     });

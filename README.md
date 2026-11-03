@@ -62,11 +62,11 @@ npm i --save @kne/fastify-tenant
 - 自定义组件管理（增删改查、复制）
 - 租户权限配置
 
-##### 邮件设置
+##### 消息设置
 
-- 租户自定义 SMTP（密码只写不读，可测试连接 / 发送测试邮件），本租户邮件通过租户 SMTP 发送
-- 租户自定义邮件模版：复制全局模版后编辑、启用 / 停用、恢复默认、预览
-- 租户端与管理端均可配置，依赖 @kne/fastify-message 的租户模版与 `getEmailConfig`
+- SMTP 设置：租户自定义 SMTP（密码只写不读，可测试连接 / 发送测试邮件），本租户邮件通过租户 SMTP 发送
+- 消息模版：复制全局模版后编辑、启用 / 停用、恢复默认、预览；可定制范围为 @kne/fastify-message 的模版白名单 ∩ 平台开放开关
+- 权限分 SMTP 设置 / 消息模版两个子模块；租户端按权限管理，平台管理端可代租户配置（不受开放开关限制）
 
 ##### 外部权限与托管租户
 
@@ -102,7 +102,7 @@ npm i --save @kne/fastify-tenant
 | getAdminUserAuthenticate | function | 使用 fastify-account 的管理员认证 | 获取管理员认证函数 |
 | permissionsProfile | string | `./libs/permissions.js` | 权限配置文件路径（支持 .js / .yml / .json） |
 | intlNamespace | string | `intl` | @kne/fastify-intl 的命名空间；未注册时错误文案固定返回内置中文 |
-| excludeMessageCodes | array\<string\> | `[]` | 邮件设置中不允许租户自定义的模版编码（如账号验证码等拿不到租户上下文的邮件） |
+| excludeMessageCodes | array\<string\> | `[]` | 消息设置中不允许租户自定义的模版编码（如账号验证码等拿不到租户上下文的邮件）；在 fastify-message 白名单之外再排除 |
 | onPermissionChange | function | `null` | 成员角色、成员状态、成员移除、角色权限 / 状态、租户状态 / 权限变化后回调，参数 `{ tenantId, userIds, reason }`（`userIds` 为账号用户 id）；回调异常只记录日志。接入 fastify-oidc 时设为 `payload => fastify.oidc.onPermissionChange(payload)` |
 
 > **当前租户来源**：`authenticate.tenantUser` 与 `services.user.getTenantUserInfo` 优先使用 `authenticatePayload.tenantId`（如 OIDC access_token 中的租户），没有时才回退到用户的默认租户（`userDefault`）。
@@ -264,7 +264,7 @@ fastify.register(require('@kne/fastify-tenant'));
 | 角色管理 (role) | create, view, edit, remove | - |
 | 共享组 (shared-group) | create, view, edit, remove | open: true, list: [read, write], type: org |
 | 用户管理 (user-manager) | create, view, edit, remove, invite | - |
-| 邮件设置 (mail-setting) | view, edit | - |
+| 消息设置 (mail-setting) | - | SMTP 设置 (smtp)：view, edit；消息模版 (template)：view, edit |
 
 #### 程序化 API
 
@@ -814,7 +814,7 @@ POST `/api/tenant/shared_group/remove`
 
 ---
 
-#### 租户邮件设置
+#### 租户消息设置
 
 租户可以配置自己的 SMTP，并自定义邮件模版；本租户的邮件（调用 `fastify.message.services.sendMessage` 时传 `tenantId`）优先使用租户模版和租户 SMTP，未配置或停用时回退到全局模版和系统邮箱。邀请加入租户邮件（`INVITETENANT`）已自动传 `tenantId`。
 
@@ -823,7 +823,8 @@ POST `/api/tenant/shared_group/remove`
 ```js
 fastify.register(require('@kne/fastify-message'), {
   emailConfig: { host, port, secure, user, pass },
-  getEmailConfig: ({ tenantId }) => fastify.tenant.services.mail.resolveEmailConfig({ tenantId })
+  getEmailConfig: ({ tenantId }) => fastify.tenant.services.mail.resolveEmailConfig({ tenantId }),
+  mailSettingTemplateCodes: ['INVITETENANT'] // 可开放给租户定制的系统模版白名单（代码配置）
 });
 fastify.register(require('@kne/fastify-tenant'), {
   excludeMessageCodes: ['VERIFY_CODE'] // 账号相关等拿不到租户的模版，不在租户模版列表中展示
@@ -831,8 +832,9 @@ fastify.register(require('@kne/fastify-tenant'), {
 ```
 
 - 租户模版：把全局邮件模版复制为本租户模版后编辑，停用或恢复默认即回退到全局模版；只开放邮件类型（type 0）的模版
+- 可定制范围：fastify-message ≥ 2.1 时为其 `mailSettingTemplateCodes` 白名单 ∩ 平台在消息管理中设置的「开放给租户」（`services.tenantTemplate`），白名单内默认开放；租户端只看到已开放的模版，管理端代管只受白名单限制。旧版 fastify-message 为全部全局邮件模版。两种情况都再排除 `excludeMessageCodes`
 - 账号注册、登录验证码等邮件发送时没有租户上下文，不会使用租户模版与 SMTP，建议通过 `excludeMessageCodes` 隐藏
-- 权限：租户端接口要求租户管理员，或拥有 `setting:mail-setting:view`（查看）/ `setting:mail-setting:edit`（修改，含查看）权限；无权限返回 403
+- 权限：租户端接口要求租户管理员，或拥有对应子模块权限：SMTP 接口为 `setting:mail-setting:smtp:view` / `:edit`，模版接口为 `setting:mail-setting:template:view` / `:edit`（edit 含 view）；不分子模块的 `setting:mail-setting:view` / `:edit` 同时作用于两者；无权限返回 403
 
 ##### services.mail 方法
 
@@ -843,7 +845,7 @@ fastify.register(require('@kne/fastify-tenant'), {
 | `removeSmtpConfig` | `{ tenantId }` | - | 清除配置，恢复系统邮箱 |
 | `testSmtpConfig` | `{ tenantId, to?, ...SMTP 字段 }` | `{ success }` | 用传入配置（未填项取已保存值）连接登录，传 `to` 时发送测试邮件；失败 400 |
 | `resolveEmailConfig` | `{ tenantId }` | `{ host, port, secure, user, pass, fromName, fromAddress } \| null` | 仅返回启用中的配置（含密码），供 fastify-message `getEmailConfig` 使用，不要通过接口暴露 |
-| `templateList` | `{ tenantId }` | `{ list: [{ code, name, description, systemTemplateId, customized, templateId, status, updatedAt }] }` | 全局邮件模版（排除 `excludeMessageCodes`）及本租户自定义状态 |
+| `templateList` | `{ tenantId, includeTenantClosed? }` | `{ list: [{ code, type, name, description, systemTemplateId, customized, templateId, status, updatedAt }] }` | 可定制的全局邮件模版及本租户自定义状态；以下模版方法都接受 `includeTenantClosed`（管理端代管时为 `true`），范围外的编码报模版不存在 |
 | `templateDetail` | `{ tenantId, code }` | `{ customized, template }` | 已自定义返回租户模版，否则返回当前生效的全局模版 |
 | `templateCustomize` | `{ tenantId, code }` | 租户模版 | 复制全局模版为本租户模版并启用；已自定义时直接返回 |
 | `templateSave` | `{ tenantId, code, name?, subject?, content?, description?, variables? }` | 租户模版 | 须先自定义；Liquid 语法错误返回 400 |
@@ -857,21 +859,21 @@ fastify.register(require('@kne/fastify-tenant'), {
 
 | 方法 | 路径 | 权限 | 参数 | 对应服务 |
 |------|------|------|------|----------|
-| GET | `/smtp-detail` | view | - | `getSmtpConfig` |
-| POST | `/smtp-save` | edit | body：`host`、`user` 必填，`enabled`、`port`、`secure`、`pass`、`fromName`、`fromAddress` | `saveSmtpConfig` |
-| POST | `/smtp-remove` | edit | - | `removeSmtpConfig` |
-| POST | `/smtp-test` | edit | body：SMTP 字段 + `to` | `testSmtpConfig` |
-| GET | `/template-list` | view | - | `templateList` |
-| GET | `/template-detail` | view | query：`code` | `templateDetail` |
-| POST | `/template-customize` | edit | body：`code` | `templateCustomize` |
-| POST | `/template-save` | edit | body：`code` 必填，`name`、`subject`、`content`、`description`、`variables` | `templateSave` |
-| POST | `/template-set-status` | edit | body：`code`、`status`（0 / 1） | `templateSetStatus` |
-| POST | `/template-reset` | edit | body：`code` | `templateReset` |
-| POST | `/template-preview` | view | body：`code` 必填，`template`、`props` | `templatePreview` |
+| GET | `/smtp-detail` | smtp:view | - | `getSmtpConfig` |
+| POST | `/smtp-save` | smtp:edit | body：`host`、`user` 必填，`enabled`、`port`、`secure`、`pass`、`fromName`、`fromAddress` | `saveSmtpConfig` |
+| POST | `/smtp-remove` | smtp:edit | - | `removeSmtpConfig` |
+| POST | `/smtp-test` | smtp:edit | body：SMTP 字段 + `to` | `testSmtpConfig` |
+| GET | `/template-list` | template:view | - | `templateList` |
+| GET | `/template-detail` | template:view | query：`code` | `templateDetail` |
+| POST | `/template-customize` | template:edit | body：`code` | `templateCustomize` |
+| POST | `/template-save` | template:edit | body：`code` 必填，`name`、`subject`、`content`、`description`、`variables` | `templateSave` |
+| POST | `/template-set-status` | template:edit | body：`code`、`status`（0 / 1） | `templateSetStatus` |
+| POST | `/template-reset` | template:edit | body：`code` | `templateReset` |
+| POST | `/template-preview` | template:view | body：`code` 必填，`template`、`props` | `templatePreview` |
 
 ##### 管理端接口
 
-前缀 `/api/tenant/admin/mail-setting`，需用户认证 + 管理员认证，路径与参数同租户端，另需显式传 `tenantId`（GET 在 query，POST 在 body）。
+前缀 `/api/tenant/admin/mail-setting`，需用户认证 + 管理员认证，路径与参数同租户端，另需显式传 `tenantId`（GET 在 query，POST 在 body）；模版范围只受白名单限制，不受「开放给租户」开关限制。
 
 ---
 
