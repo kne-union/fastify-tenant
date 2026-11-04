@@ -150,6 +150,20 @@ module.exports = {
               ]
             }
           ]
+        },
+        {
+          name: 'MFA 设置',
+          code: 'mfa-setting',
+          permissions: [
+            {
+              name: '查看',
+              code: 'view'
+            },
+            {
+              name: '编辑',
+              code: 'edit'
+            }
+          ]
         }
       ]
     }

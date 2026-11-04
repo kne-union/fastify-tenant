@@ -107,6 +107,7 @@ module.exports = {
   mailTemplateNotFound: '邮件模版{code}不存在',
   mailTemplateNotCustomized: '邮件模版{code}尚未自定义',
   mailSettingForbidden: '没有消息设置的操作权限',
+  mfaSettingForbidden: '没有 MFA 设置的操作权限',
 
   'permission.setting': '设置',
   'permission.setting:company-setting': '公司信息',
@@ -140,5 +141,8 @@ module.exports = {
   'permission.setting:mail-setting:smtp:edit': '编辑',
   'permission.setting:mail-setting:template': '消息模版',
   'permission.setting:mail-setting:template:view': '查看',
-  'permission.setting:mail-setting:template:edit': '编辑'
+  'permission.setting:mail-setting:template:edit': '编辑',
+  'permission.setting:mfa-setting': 'MFA 设置',
+  'permission.setting:mfa-setting:view': '查看',
+  'permission.setting:mfa-setting:edit': '编辑'
 };

@@ -61,6 +61,7 @@ npm i --save @kne/fastify-tenant
 - 环境变量管理（支持密钥类型，密钥值以 `******` 展示）
 - 自定义组件管理（增删改查、复制）
 - 租户权限配置
+- MFA 设置：按租户开启短信多因素认证并设置有效期 `maxAge`，由 @kne/fastify-oidc 在登录交互中读取
 
 ##### 消息设置
 
@@ -265,6 +266,7 @@ fastify.register(require('@kne/fastify-tenant'));
 | 共享组 (shared-group) | create, view, edit, remove | open: true, list: [read, write], type: org |
 | 用户管理 (user-manager) | create, view, edit, remove, invite | - |
 | 消息设置 (mail-setting) | - | SMTP 设置 (smtp)：view, edit；消息模版 (template)：view, edit |
+| MFA 设置 (mfa-setting) | view, edit | - |
 
 #### 程序化 API
 
@@ -874,6 +876,40 @@ fastify.register(require('@kne/fastify-tenant'), {
 ##### 管理端接口
 
 前缀 `/api/tenant/admin/mail-setting`，需用户认证 + 管理员认证，路径与参数同租户端，另需显式传 `tenantId`（GET 在 query，POST 在 body）；模版范围只受白名单限制，不受「开放给租户」开关限制。
+
+---
+
+#### 租户 MFA 设置
+
+租户可开启多因素认证（MFA）。配置存在 `setting.options.mfa`，本插件只负责存取，由 [@kne/fastify-oidc](https://www.npmjs.com/package/@kne/fastify-oidc) 在 OIDC 登录交互中读取：开启后用户选择该租户时需要短信验证，账号没有手机号时无法进入该租户。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| enabled | boolean | `false` | 是否开启 MFA |
+| methods | string[] | `['sms']` | 验证方式，目前只支持 `sms` |
+| maxAge | integer | `86400` | MFA 有效期（秒）：同一登录会话内距上次验证超过该时长需重新验证，`0` 表示每次授权都验证 |
+
+- 权限：租户端接口要求租户管理员，或拥有 `setting:mfa-setting:view` / `:edit`（edit 含 view）；无权限返回 403
+
+##### services.setting MFA 方法
+
+| 方法 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `getMfa` | `{ tenantId }` | `{ enabled, methods, maxAge }` | 未保存过时返回默认值 |
+| `saveMfa` | `{ tenantId, mfa }` | `{ enabled, methods, maxAge }` | 只合并 `mfa` 中的上述字段，不影响 `options` 里的其他配置 |
+
+##### 租户端接口
+
+前缀 `/api/tenant/mfa-setting`，需用户认证 + 租户用户上下文，`tenantId` 取自登录态。
+
+| 方法 | 路径 | 权限 | 参数 | 对应服务 |
+|------|------|------|------|----------|
+| GET | `/detail` | view | - | `getMfa` |
+| POST | `/save` | edit | body：`enabled`、`methods`、`maxAge`（均可选） | `saveMfa` |
+
+##### 管理端接口
+
+前缀 `/api/tenant/admin/mfa-setting`，需用户认证 + 管理员认证，路径与参数同租户端，另需显式传 `tenantId`（GET 在 query，POST 在 body）。
 
 ---
 
