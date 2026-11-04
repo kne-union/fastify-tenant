@@ -107,6 +107,7 @@ module.exports = {
   mailTemplateNotFound: 'Mail template {code} does not exist',
   mailTemplateNotCustomized: 'Mail template {code} has not been customized',
   mailSettingForbidden: 'You do not have permission to manage message settings',
+  mfaSettingForbidden: 'You do not have permission to manage MFA settings',
 
   'permission.setting': 'Settings',
   'permission.setting:company-setting': 'Company information',
@@ -140,5 +141,8 @@ module.exports = {
   'permission.setting:mail-setting:smtp:edit': 'Edit',
   'permission.setting:mail-setting:template': 'Message templates',
   'permission.setting:mail-setting:template:view': 'View',
-  'permission.setting:mail-setting:template:edit': 'Edit'
+  'permission.setting:mail-setting:template:edit': 'Edit',
+  'permission.setting:mfa-setting': 'MFA settings',
+  'permission.setting:mfa-setting:view': 'View',
+  'permission.setting:mfa-setting:edit': 'Edit'
 };
