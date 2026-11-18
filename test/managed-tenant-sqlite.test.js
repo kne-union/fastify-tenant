@@ -5,11 +5,11 @@ const Fastify = require('fastify');
 
 const ISSUER = 'https://host.example.com/oidc';
 
-const buildApp = async () => {
+const buildApp = async (tenantOptions = {}) => {
   const fastify = Fastify({ logger: false });
   await fastify.register(require('@kne/fastify-sequelize'), { db: { dialect: 'sqlite', storage: ':memory:', logging: false }, sqlPath: './test/__no_sql__' });
   await fastify.register(require('@kne/fastify-account'), {});
-  await fastify.register(require('../index'), { permissionsProfile: null });
+  await fastify.register(require('../index'), Object.assign({ permissionsProfile: null }, tenantOptions));
   await fastify.ready();
   await fastify.sequelize.sync();
   return fastify;
@@ -174,6 +174,63 @@ describe('托管租户 applySnapshot（sqlite）', () => {
       snapshot: buildSnapshot({ tenant: { id: 'h-tenant-404', name: '未开通' }, enabled: false })
     });
     assert.equal(missing, null);
+  });
+});
+
+describe('托管租户 applySnapshot 只对访问数据变化的成员通知 onPermissionChange', () => {
+  let fastify;
+  let notified;
+  const apply = snapshot => fastify.tenant.services.managed.applySnapshot({ issuer: ISSUER, snapshot });
+  const notifiedUserIds = () => notified.flatMap(payload => payload.userIds).sort();
+  const withRoles = (roles, extra = {}) => buildSnapshot(Object.assign({ roles }, extra));
+  const baseRoles = () => buildSnapshot().roles;
+  const baseMembers = () => buildSnapshot().members;
+
+  beforeEach(async () => {
+    notified = [];
+    fastify = await buildApp({ onPermissionChange: async payload => notified.push(payload) });
+    await createAccountUser(fastify, 'acc-1');
+    await createAccountUser(fastify, 'acc-2');
+    await createAccountUser(fastify, 'acc-3');
+    await apply(buildSnapshot());
+  });
+
+  afterEach(async () => {
+    await fastify.close();
+  });
+
+  it('首次同步与重复同步相同快照都不通知', async () => {
+    assert.deepEqual(notified, []);
+    await apply(buildSnapshot());
+    assert.deepEqual(notified, []);
+  });
+
+  it('角色权限变化只通知拥有该角色的成员', async () => {
+    const roles = baseRoles().map(role => (role.code === 'sales' ? Object.assign({}, role, { permissions: ['setting:org'] }) : role));
+    await apply(withRoles(roles));
+    assert.deepEqual(notifiedUserIds(), ['acc-2']);
+  });
+
+  it('成员角色或状态变化只通知该成员', async () => {
+    const members = baseMembers().map(member => (member.userId === 'acc-1' ? Object.assign({}, member, { roleCodes: ['sales'] }) : member));
+    await apply(buildSnapshot({ members }));
+    assert.deepEqual(notifiedUserIds(), ['acc-1']);
+  });
+
+  it('新加入的成员不通知，被移除的成员通知', async () => {
+    const joined = baseMembers().concat({ id: 'h-tu-3', userId: 'acc-3', name: '王五', status: 'open', roleCodes: ['sales'], tenantOrgIds: [] });
+    await apply(buildSnapshot({ members: joined }));
+    assert.deepEqual(notified, []);
+    await apply(buildSnapshot({ members: baseMembers() }));
+    assert.deepEqual(notifiedUserIds(), ['acc-3']);
+  });
+
+  it('租户权限变化或关闭应用通知全部成员', async () => {
+    await apply(buildSnapshot({ permissions: ['setting'] }));
+    assert.deepEqual(notifiedUserIds(), ['acc-1', 'acc-2']);
+    notified = [];
+    await apply(buildSnapshot({ permissions: ['setting'], enabled: false }));
+    assert.deepEqual(notifiedUserIds(), ['acc-1', 'acc-2']);
   });
 });
 

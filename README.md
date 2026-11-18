@@ -331,7 +331,7 @@ fastify.register(require('@kne/fastify-tenant'));
 | `isManagedTenant(tenant)` | 租户实例或对象 | `boolean` | 是否托管租户 |
 | `assertNotManaged(tenantOrId)` | 租户实例或 id | - | 托管租户抛 `tenantManaged` |
 | `findByHostTenantId` | `{ issuer, hostTenantId }` | 租户实例 / `null` | 按宿主租户 id 查找本地托管租户 |
-| `applySnapshot` | `{ issuer, snapshot }` | 租户实例 / `null` | 在一个事务内按快照 upsert 托管租户；宿主未开通且本地不存在时返回 `null` |
+| `applySnapshot` | `{ issuer, snapshot }` | 租户实例 / `null` | 在一个事务内按快照 upsert 托管租户；宿主未开通且本地不存在时返回 `null`。只对访问数据（租户状态 / 权限、角色状态 / 权限、成员状态 / 角色 / 组织）实际变化的成员触发 `onPermissionChange`（`reason: 'managed-snapshot'`）：租户状态或权限变化通知全部成员，新建租户与新加入成员不通知，快照不变时不通知 |
 
 `snapshot` 结构（id 均为宿主侧 id，权限 code 为本地 code）：
 
