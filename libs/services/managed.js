@@ -201,9 +201,49 @@ module.exports = fp(async (fastify, options) => {
     }
   };
 
+  const sortedKey = list => JSON.stringify([...(list || [])].map(String).sort());
+
+  // 决定成员能做什么的数据：租户状态与权限、角色状态与权限、成员状态 / 角色 / 组织
+  const captureAccess = async ({ tenantId, transaction }) => {
+    const tenant = await models.tenant.findByPk(tenantId, { transaction });
+    const setting = await models.setting.findOne({ where: { tenantId }, transaction });
+    const roles = await models.role.findAll({ where: { tenantId }, transaction });
+    const users = await models.user.findAll({ where: { tenantId }, transaction });
+    return {
+      tenant: JSON.stringify([tenant?.status, sortedKey(setting?.permissions)]),
+      roles: new Map(roles.map(role => [String(role.id), JSON.stringify([role.status, sortedKey(role.permissions)])])),
+      users: new Map(users.map(user => [String(user.id), { userId: user.userId, roles: (user.roles || []).map(String), key: JSON.stringify([user.status, sortedKey(user.roles), sortedKey(user.tenantOrgIds)]) }]))
+    };
+  };
+
+  /**
+   * 同步前后访问数据有变化的成员（账号 id）。新建的租户与新加入的成员此前没有访问权，不需要撤销令牌；
+   * 租户状态或租户权限变化影响全部成员。
+   */
+  const changedAccessUserIds = (before, after) => {
+    if (!before) {
+      return [];
+    }
+    const userIds = new Set();
+    if (before.tenant !== after.tenant) {
+      before.users.forEach(user => user.userId && userIds.add(String(user.userId)));
+      after.users.forEach(user => user.userId && userIds.add(String(user.userId)));
+      return [...userIds];
+    }
+    const changedRoles = new Set([...new Set([...before.roles.keys(), ...after.roles.keys()])].filter(id => before.roles.get(id) !== after.roles.get(id)));
+    before.users.forEach((previous, id) => {
+      const current = after.users.get(id);
+      if (!current || current.key !== previous.key || previous.roles.some(roleId => changedRoles.has(roleId))) {
+        [previous.userId, current?.userId].filter(Boolean).forEach(userId => userIds.add(String(userId)));
+      }
+    });
+    return [...userIds];
+  };
+
   /**
    * snapshot: { tenant, enabled, permissions, roles, orgs, members }，其中 id 均为宿主侧 id，权限 code 已是本地 code
    * 宿主租户未开通本应用且本地也没有时不创建，返回 null
+   * 只对访问数据实际变化的成员触发 onPermissionChange：定时刷新拿到相同快照时不撤销令牌
    */
   const applySnapshot = async ({ issuer, snapshot }) => {
     if (!issuer || !snapshot?.tenant?.id) {
@@ -211,10 +251,15 @@ module.exports = fp(async (fastify, options) => {
     }
     const syncSource = syncSourceOf(issuer);
     const result = await withTransaction(fastify, async transaction => {
+      const existing = await findByHostTenantId({ issuer, hostTenantId: String(snapshot.tenant.id) }, { transaction });
+      const before = existing ? await captureAccess({ tenantId: existing.id, transaction }) : null;
+      const finish = async tenant => ({ tenant, userIds: changedAccessUserIds(before, await captureAccess({ tenantId: tenant.id, transaction })) });
       const tenant = await upsertTenant({ issuer, snapshot, transaction });
-      if (!tenant || !snapshot.enabled) {
-        // 未开通：租户已置为关闭，按租户通知全部成员
-        return { tenant, userIds: undefined };
+      if (!tenant) {
+        return { tenant, userIds: [] };
+      }
+      if (!snapshot.enabled) {
+        return finish(tenant);
       }
       const tenantId = tenant.id;
       await savePermissions({ tenantId, permissions: snapshot.permissions || [], transaction });
@@ -224,7 +269,7 @@ module.exports = fp(async (fastify, options) => {
       const members = snapshot.members || [];
       const memberSourceToId = await upsertMembers({ tenantId, syncSource, members, roleCodeToId, orgSourceToId, transaction });
       await assignLeaders({ tenantId, orgs, orgSourceToId, memberSourceToId, transaction });
-      return { tenant, userIds: members.map(member => member.userId).filter(Boolean) };
+      return finish(tenant);
     });
     if (result.tenant) {
       await services.permissionChange?.notify({ tenantId: result.tenant.id, userIds: result.userIds, reason: 'managed-snapshot' });
